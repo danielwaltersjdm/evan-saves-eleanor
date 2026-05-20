@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Evan Saves Eleanor</title>
+<style>
+  body {
+    margin: 0;
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Segoe UI', sans-serif;
+    color: white;
+    padding: 10px;
+  }
+  h1 { margin: 8px 0; color: #FFD700; }
+  canvas {
+    border: 4px solid #555;
+    image-rendering: pixelated;
+    background: #87CEEB;
+    max-width: 100%;
+  }
+  #hud {
+    margin: 8px 0;
+    font-size: 18px;
+    background: #333;
+    padding: 6px 14px;
+    border-radius: 8px;
+  }
+  #hud span { color: #FFD700; font-weight: bold; }
+  #instructions {
+    margin-top: 10px;
+    font-size: 14px;
+    max-width: 800px;
+    text-align: center;
+    line-height: 1.6;
+    background: #2a2a3e;
+    padding: 10px 20px;
+    border-radius: 8px;
+  }
+  kbd {
+    background: #444;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <h1>Evan Saves Eleanor</h1>
+  <div id="hud">
+    Form: <span id="form">Evan</span> &nbsp;|&nbsp;
+    Lives: <span id="lives">3</span> &nbsp;|&nbsp;
+    Friends rescued: <span id="friends">0</span>/6
+  </div>
+  <canvas id="game" width="800" height="500"></canvas>
+  <div id="instructions">
+    <b>Move:</b> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> &nbsp;&nbsp;
+    <b>Jump:</b> <kbd>Space</kbd> or <kbd>&uarr;</kbd> &nbsp;&nbsp;
+    <b>Spray (octopus):</b> <kbd>Z</kbd> &nbsp;&nbsp;
+    <b>Camouflage (octopus):</b> hold <kbd>X</kbd><br>
+    Grab the brown <b>D</b> block to turn into a <b style="color:#D2691E">Dog</b> (faster, higher jump).
+    Grab the purple <b>O</b> block to turn into an <b style="color:#9400D3">Octopus</b> (spray + hide).<br>
+    Help your friends along the way and save <b style="color:#FFD700">Eleanor</b> at the end!
+  </div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const GRAVITY = 0.6;
+const WORLD_W = 3300;
+
+const player = {
+  x: 50, y: 300, w: 28, h: 36,
+  vx: 0, vy: 0,
+  onGround: false,
+  form: 'evan',
+  camouflaged: false,
+  sprayCooldown: 0,
+  invincible: 0,
+  facing: 1,
+};
+
+let lives = 3;
+let friendsRescued = 0;
+let won = false;
+let lost = false;
+let camera = 0;
+let lastMessage = '';
+let messageTimer = 0;
+
+const platforms = [
+  {x: 0,    y: 460, w: 600, h: 40},
+  {x: 700,  y: 460, w: 500, h: 40},
+  {x: 1300, y: 460, w: 400, h: 40},
+  {x: 1800, y: 460, w: 600, h: 40},
+  {x: 2500, y: 460, w: 800, h: 40},
+
+  {x: 250,  y: 380, w: 100, h: 16},
+  {x: 450,  y: 320, w: 100, h: 16},
+  {x: 750,  y: 360, w: 120, h: 16},
+  {x: 950,  y: 280, w: 120, h: 16},
+  {x: 1150, y: 360, w: 100, h: 16},
+  {x: 1400, y: 340, w: 120, h: 16},
+  {x: 1600, y: 280, w: 100, h: 16},
+  {x: 1900, y: 360, w: 140, h: 16},
+  {x: 2150, y: 300, w: 120, h: 16},
+  {x: 2350, y: 240, w: 100, h: 16},
+  {x: 2600, y: 360, w: 100, h: 16},
+  {x: 2800, y: 300, w: 100, h: 16},
+];
+
+const enemies = [
+  {x: 400,  y: 432, w: 28, h: 28, vx: 1,  min: 350,  max: 580,  alive: true},
+  {x: 800,  y: 432, w: 28, h: 28, vx: -1, min: 720,  max: 1080, alive: true},
+  {x: 1000, y: 252, w: 28, h: 28, vx: 1,  min: 950,  max: 1070, alive: true},
+  {x: 1500, y: 432, w: 28, h: 28, vx: 1,  min: 1320, max: 1680, alive: true},
+  {x: 1900, y: 432, w: 28, h: 28, vx: -1, min: 1820, max: 2380, alive: true},
+  {x: 2200, y: 432, w: 28, h: 28, vx: 1,  min: 1820, max: 2380, alive: true},
+  {x: 2700, y: 432, w: 28, h: 28, vx: 1,  min: 2520, max: 3280, alive: true},
+  {x: 2950, y: 432, w: 28, h: 28, vx: -1, min: 2520, max: 3280, alive: true},
+];
+
+const powerups = [
+  {x: 320,  y: 350, w: 28, h: 28, type: 'dog',     taken: false},
+  {x: 970,  y: 250, w: 28, h: 28, type: 'octopus', taken: false},
+  {x: 1620, y: 250, w: 28, h: 28, type: 'dog',     taken: false},
+  {x: 2370, y: 210, w: 28, h: 28, type: 'octopus', taken: false},
+];
+
+const npcs = [
+  {x: 200,  y: 426, w: 28, h: 34, name: 'Kedist',   color: '#FF6B6B', rescued: false},
+  {x: 770,  y: 426, w: 28, h: 34, name: 'Daniel',   color: '#4ECDC4', rescued: false},
+  {x: 1450, y: 426, w: 28, h: 34, name: 'Ariana',   color: '#FFE66D', rescued: false},
+  {x: 1950, y: 326, w: 28, h: 34, name: 'Emily',    color: '#FF6BCB', rescued: false},
+  {x: 2170, y: 266, w: 28, h: 34, name: 'Leighton', color: '#9B59B6', rescued: false},
+  {x: 2650, y: 326, w: 28, h: 34, name: 'Lorelai',  color: '#3498DB', rescued: false},
+];
+
+const eleanor = {x: 3200, y: 422, w: 32, h: 38};
+
+const sprays = [];
+
+const clouds = [
+  {x: 100, y: 60}, {x: 400, y: 80}, {x: 700, y: 50}, {x: 1100, y: 90},
+  {x: 1500, y: 60}, {x: 1900, y: 80}, {x: 2300, y: 50}, {x: 2700, y: 90}, {x: 3100, y: 60}
+];
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if ((won || lost) && e.key.toLowerCase() === 'r') location.reload();
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function respawn() {
+  player.x = Math.max(50, player.x - 240);
+  player.y = 200;
+  player.vx = 0;
+  player.vy = 0;
+  player.invincible = 90;
+}
+
+function update() {
+  if (won || lost) return;
+
+  const speed = player.form === 'dog' ? 5 : 3.2;
+  const jumpV = player.form === 'dog' ? -14 : -12;
+
+  player.vx = 0;
+  if (keys['arrowleft']  || keys['a']) { player.vx = -speed; player.facing = -1; }
+  if (keys['arrowright'] || keys['d']) { player.vx =  speed; player.facing =  1; }
+  if ((keys[' '] || keys['arrowup'] || keys['w']) && player.onGround) {
+    player.vy = jumpV;
+    player.onGround = false;
+  }
+
+  if (player.form === 'octopus') {
+    player.camouflaged = !!keys['x'];
+    if (keys['z'] && player.sprayCooldown <= 0) {
+      sprays.push({x: player.x + player.w/2, y: player.y + 14, vx: 9 * player.facing, life: 45});
+      player.sprayCooldown = 18;
+    }
+  } else {
+    player.camouflaged = false;
+  }
+  if (player.sprayCooldown > 0) player.sprayCooldown--;
+  if (player.invincible > 0) player.invincible--;
+
+  player.vy += GRAVITY;
+  if (player.vy > 14) player.vy = 14;
+
+  player.x += player.vx;
+  for (const p of platforms) {
+    if (rectsOverlap(player, p)) {
+      if (player.vx > 0) player.x = p.x - player.w;
+      else if (player.vx < 0) player.x = p.x + p.w;
+    }
+  }
+
+  player.y += player.vy;
+  player.onGround = false;
+  for (const p of platforms) {
+    if (rectsOverlap(player, p)) {
+      if (player.vy > 0) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      } else if (player.vy < 0) {
+        player.y = p.y + p.h;
+        player.vy = 0;
+      }
+    }
+  }
+
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.w > WORLD_W) player.x = WORLD_W - player.w;
+
+  if (player.y > H + 100) {
+    lives--;
+    if (lives <= 0) { lost = true; }
+    else { respawn(); }
+  }
+
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    e.x += e.vx;
+    if (e.x < e.min) { e.x = e.min; e.vx = Math.abs(e.vx); }
+    if (e.x + e.w > e.max) { e.x = e.max - e.w; e.vx = -Math.abs(e.vx); }
+
+    if (rectsOverlap(player, e) && player.invincible <= 0 && !player.camouflaged) {
+      if (player.vy > 2 && (player.y + player.h - e.y) < 20) {
+        e.alive = false;
+        player.vy = -9;
+      } else {
+        lives--;
+        if (lives <= 0) {
+          lost = true;
+        } else {
+          player.invincible = 90;
+          player.vy = -8;
+          player.vx = -player.facing * 4;
+        }
+      }
+    }
+  }
+
+  for (const s of sprays) {
+    s.x += s.vx;
+    s.life--;
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      if (s.x > e.x && s.x < e.x + e.w && s.y > e.y && s.y < e.y + e.h) {
+        e.alive = false;
+        s.life = 0;
+      }
+    }
+  }
+  for (let i = sprays.length - 1; i >= 0; i--) {
+    if (sprays[i].life <= 0) sprays.splice(i, 1);
+  }
+
+  for (const p of powerups) {
+    if (p.taken) continue;
+    if (rectsOverlap(player, p)) {
+      p.taken = true;
+      player.form = p.type;
+      lastMessage = 'You became a ' + p.type + '!';
+      messageTimer = 90;
+    }
+  }
+
+  for (const n of npcs) {
+    if (n.rescued) continue;
+    if (rectsOverlap(player, n)) {
+      n.rescued = true;
+      friendsRescued++;
+      lastMessage = n.name + ' joins your team!';
+      messageTimer = 120;
+    }
+  }
+
+  if (rectsOverlap(player, eleanor)) won = true;
+
+  camera = player.x - W / 2;
+  if (camera < 0) camera = 0;
+  if (camera > WORLD_W - W) camera = WORLD_W - W;
+
+  if (messageTimer > 0) messageTimer--;
+}
+
+function drawRect(x, y, w, h, color, outline) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x - camera, y, w, h);
+  if (outline !== null) {
+    ctx.strokeStyle = outline || 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - camera, y, w, h);
+  }
+}
+
+function drawPlayer() {
+  const x = player.x, y = player.y;
+  const alpha = player.camouflaged ? 0.22 : (player.invincible > 0 && Math.floor(player.invincible / 6) % 2 === 0 ? 0.4 : 1);
+  ctx.globalAlpha = alpha;
+
+  if (player.form === 'octopus') {
+    drawRect(x, y + 4, player.w, 22, '#9400D3');
+    ctx.fillStyle = '#9400D3';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(x + i*7 - camera, y + 26, 5, 10);
+    }
+    ctx.fillStyle = 'white';
+    ctx.fillRect(x + 6  - camera, y + 10, 5, 5);
+    ctx.fillRect(x + 17 - camera, y + 10, 5, 5);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(x + 8  - camera, y + 12, 2, 2);
+    ctx.fillRect(x + 19 - camera, y + 12, 2, 2);
+  } else if (player.form === 'dog') {
+    drawRect(x, y + 12, player.w, 24, '#8B4513');
+    drawRect(x + 12, y, 16, 16, '#A0522D');
+    ctx.fillStyle = '#5C2C0C';
+    ctx.fillRect(x + 11 - camera, y - 2, 5, 6);
+    ctx.fillRect(x + 24 - camera, y - 2, 5, 6);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(x + 17 - camera, y + 5, 2, 2);
+    ctx.fillRect(x + 24 - camera, y + 5, 2, 2);
+    ctx.fillRect(x + 26 - camera, y + 10, 3, 3);
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(x - 4  - camera, y + 14, 6, 4);
+  } else {
+    drawRect(x + 4, y + 2, 20, 14, '#FFDBAC');
+    drawRect(x, y + 16, player.w, 20, '#FF69B4');
+    ctx.fillStyle = '#3B2417';
+    ctx.fillRect(x + 4 - camera, y, 20, 6);
+    ctx.fillRect(x + 4 - camera, y + 2, 4, 8);
+    ctx.fillRect(x + 20 - camera, y + 2, 4, 8);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(x + 10 - camera, y + 8, 2, 2);
+    ctx.fillRect(x + 17 - camera, y + 8, 2, 2);
+    ctx.fillStyle = '#C04080';
+    ctx.fillRect(x + 12 - camera, y + 12, 5, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw() {
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#87CEEB');
+  skyGrad.addColorStop(1, '#D4F1F9');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = 'white';
+  for (const c of clouds) {
+    const cx = c.x - camera * 0.4;
+    if (cx > -120 && cx < W + 20) {
+      ctx.fillRect(cx, c.y, 80, 18);
+      ctx.fillRect(cx + 12, c.y - 10, 60, 18);
+      ctx.fillRect(cx + 30, c.y + 4, 50, 14);
+    }
+  }
+
+  ctx.fillStyle = '#4A7B2A';
+  for (let i = 0; i < 12; i++) {
+    const hx = i * 320 - camera * 0.5;
+    if (hx > -200 && hx < W + 200) {
+      ctx.beginPath();
+      ctx.arc(hx, 460, 130, Math.PI, 0);
+      ctx.fill();
+    }
+  }
+
+  for (const p of platforms) {
+    if (p.h > 30) {
+      drawRect(p.x, p.y, p.w, p.h, '#8B4513', null);
+      ctx.fillStyle = '#228B22';
+      ctx.fillRect(p.x - camera, p.y, p.w, 8);
+      ctx.fillStyle = '#1A5A1A';
+      for (let gx = p.x; gx < p.x + p.w; gx += 14) {
+        ctx.fillRect(gx - camera, p.y - 2, 3, 4);
+      }
+    } else {
+      drawRect(p.x, p.y, p.w, p.h, '#A0522D');
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(p.x - camera, p.y, p.w, 3);
+    }
+  }
+
+  for (const p of powerups) {
+    if (p.taken) continue;
+    const color = p.type === 'dog' ? '#D2691E' : '#9400D3';
+    const bob = Math.sin(Date.now() / 300 + p.x) * 3;
+    drawRect(p.x, p.y + bob, p.w, p.h, color);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(p.type === 'dog' ? 'D' : 'O', p.x + 9 - camera, p.y + 22 + bob);
+  }
+
+  for (const n of npcs) {
+    if (n.rescued) continue;
+    drawRect(n.x, n.y, n.w, n.h, n.color);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(n.x + 8 - camera, n.y + 10, 3, 3);
+    ctx.fillRect(n.x + 17 - camera, n.y + 10, 3, 3);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    const labelX = n.x + n.w/2 - camera;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(labelX - 32, n.y - 16, 64, 14);
+    ctx.fillStyle = 'white';
+    ctx.fillText(n.name, labelX, n.y - 5);
+    ctx.textAlign = 'start';
+  }
+
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    drawRect(e.x, e.y, e.w, e.h, '#333');
+    ctx.fillStyle = '#FF3030';
+    ctx.beginPath();
+    for (let i = 0; i <= 4; i++) {
+      const sx = e.x + i * 7 - camera;
+      ctx.moveTo(sx, e.y);
+      ctx.lineTo(sx + 3.5, e.y - 7);
+      ctx.lineTo(sx + 7, e.y);
+    }
+    ctx.fill();
+    ctx.fillStyle = '#FF4444';
+    ctx.fillRect(e.x + 6  - camera, e.y + 10, 5, 5);
+    ctx.fillRect(e.x + 17 - camera, e.y + 10, 5, 5);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(e.x + 7  - camera, e.y + 11, 2, 2);
+    ctx.fillRect(e.x + 18 - camera, e.y + 11, 2, 2);
+  }
+
+  if (!won) {
+    const bob = Math.sin(Date.now() / 400) * 3;
+    drawRect(eleanor.x, eleanor.y + bob, eleanor.w, eleanor.h, '#FFD700');
+    ctx.fillStyle = '#FFDBAC';
+    ctx.fillRect(eleanor.x + 6 - camera, eleanor.y + 4 + bob, 20, 14);
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(eleanor.x + 4 - camera, eleanor.y + bob, 24, 6);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(eleanor.x + 11 - camera, eleanor.y + 10 + bob, 2, 2);
+    ctx.fillRect(eleanor.x + 19 - camera, eleanor.y + 10 + bob, 2, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(eleanor.x + eleanor.w/2 - 36 - camera, eleanor.y - 22 + bob, 72, 16);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Eleanor', eleanor.x + eleanor.w/2 - camera, eleanor.y - 10 + bob);
+    ctx.textAlign = 'start';
+  }
+
+  for (const s of sprays) {
+    ctx.fillStyle = '#C39BD3';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.arc(s.x - camera, s.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#9400D3';
+    ctx.beginPath();
+    ctx.arc(s.x - camera, s.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  drawPlayer();
+
+  if (messageTimer > 0 && lastMessage) {
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(W/2 - 160, 24, 320, 34);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 17px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(lastMessage, W/2, 47);
+    ctx.textAlign = 'start';
+  }
+
+  if (won) {
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 52px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('You saved Eleanor!', W/2, H/2 - 30);
+    ctx.font = '22px sans-serif';
+    ctx.fillStyle = 'white';
+    ctx.fillText('Friends rescued: ' + friendsRescued + ' / 6', W/2, H/2 + 10);
+    ctx.fillText('Press R to play again', W/2, H/2 + 50);
+    ctx.textAlign = 'start';
+  } else if (lost) {
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#FF4444';
+    ctx.font = 'bold 52px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Game Over', W/2, H/2 - 20);
+    ctx.font = '22px sans-serif';
+    ctx.fillStyle = 'white';
+    ctx.fillText('Press R to try again', W/2, H/2 + 20);
+    ctx.textAlign = 'start';
+  }
+
+  document.getElementById('form').textContent = player.form[0].toUpperCase() + player.form.slice(1);
+  document.getElementById('lives').textContent = lives;
+  document.getElementById('friends').textContent = friendsRescued;
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
