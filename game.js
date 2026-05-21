@@ -1754,15 +1754,13 @@ function createChallenge(type, tube) {
   } else if (type === 'iceball') {
     ch.player = { x: 60, y: 380, w: 32, h: 32, vx: 0, vy: 0, onGround: false, radius: 18, rotation: 0 };
     ch.balls = [];
-    for (let i = 0; i < 10; i++) {
-      // Alternate: even = small (squishable, r < player.radius - 2), odd = big (dodge)
-      const small = i % 2 === 0;
-      const r = small ? 7 + Math.random() * 5 : 22 + Math.random() * 14;
+    for (let i = 0; i < 7; i++) {
+      const r = 16 + Math.random() * 8;  // 16-24, all medium-size to jump over
       ch.balls.push({
-        x: 240 + i * 170 + Math.random() * 60,
+        x: 280 + i * 240 + Math.random() * 50,
         y: 412 - r,
         r,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (1.4 + Math.random() * 1.8),
+        vx: (Math.random() > 0.5 ? 1 : -1) * (1.0 + Math.random() * 1.2),
         minX: 200, maxX: 1900,
       });
     }
@@ -1916,18 +1914,10 @@ function updateIceballChallenge() {
     const dy = (p.y + p.h / 2) - b.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < p.radius + b.r) {
-      if (p.radius > b.r + 2) {
-        // Squish smaller ball
-        b.squished = true;
-        sfx.defeat();
-        addParticles(b.x, b.y, 8, '#A0E0F0');
-      } else {
-        challengeFail();
-        return;
-      }
+      challengeFail();
+      return;
     }
   }
-  ch.balls = ch.balls.filter(b => !b.squished);
 
   if (p.x > ch.exitX) challengeSucceed();
 }
@@ -2106,7 +2096,7 @@ function drawIceballChallenge() {
   ctx.restore();
   drawParticles(false);
   ctx.restore();
-  drawChallengeHud('Roll past! Squish smaller balls, dodge bigger ones!', null);
+  drawChallengeHud('Roll and jump over the snowballs to reach the flag!', null);
 }
 
 function drawSwimChallenge() {
