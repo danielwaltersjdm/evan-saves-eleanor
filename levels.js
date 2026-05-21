@@ -65,29 +65,39 @@ function generateLevel(num) {
 
 function buildStandardLevel(level, rand, diff) {
   const W = level.worldW;
-  // Ground with gaps
+  // Ground with gaps — cap gap width so normal-form Evan can always cross
+  const grounds = [];
   let x = 0;
   while (x < W) {
     const segLen = 350 + Math.floor(rand() * 260);
     const segW = Math.min(segLen, W - x);
-    level.platforms.push({ x, y: 460, w: segW, h: 40, type: 'ground' });
+    const g = { x, y: 460, w: segW, h: 40, type: 'ground' };
+    level.platforms.push(g);
+    grounds.push(g);
     x += segW;
     if (x < W - 200) {
-      const gap = 70 + Math.floor(rand() * (50 + diff * 70));
+      const gap = 55 + Math.floor(rand() * (20 + diff * 25));  // 55-100 max
       x += gap;
     } else {
       break;
     }
   }
-  // Always ensure last 200px is ground for exit
-  level.platforms.push({ x: W - 240, y: 460, w: 240, h: 40, type: 'ground' });
+  // Ensure last 240px is ground for exit (avoid double-stacking)
+  if (grounds.length === 0 || grounds[grounds.length - 1].x + grounds[grounds.length - 1].w < W - 240) {
+    const g = { x: W - 240, y: 460, w: 240, h: 40, type: 'ground' };
+    level.platforms.push(g);
+    grounds.push(g);
+  }
 
-  // Floating platforms
-  const fpCount = 4 + Math.floor(diff * 8);
+  // Floating platforms — always placed ABOVE a ground segment so the arc over a gap is clear
+  // Height kept in 330-400 range so they're always reachable from a normal jump
+  const fpCount = 3 + Math.floor(diff * 6);
   for (let i = 0; i < fpCount; i++) {
-    const fx = 220 + (i * (W - 440) / fpCount) + (rand() - 0.5) * 80;
-    const fy = 220 + Math.floor(rand() * 180);
+    const g = grounds[Math.floor(rand() * grounds.length)];
+    if (g.w < 130) continue;
     const fw = 70 + Math.floor(rand() * 70);
+    const fx = g.x + 20 + rand() * (g.w - 40 - fw);
+    const fy = 330 + Math.floor(rand() * 70);
     level.platforms.push({ x: fx, y: fy, w: fw, h: 16, type: 'float' });
   }
 
@@ -227,29 +237,37 @@ function buildOceanLevel(level, rand, diff) {
 
 function buildJungleLevel(level, rand, diff) {
   const W = level.worldW;
-  // Ground in chunks
+  // Ground with capped gap widths
+  const grounds = [];
   let x = 0;
   while (x < W) {
-    const segLen = 250 + Math.floor(rand() * 220);
+    const segLen = 280 + Math.floor(rand() * 200);
     const segW = Math.min(segLen, W - x);
-    level.platforms.push({ x, y: 460, w: segW, h: 40, type: 'jungle-ground' });
+    const g = { x, y: 460, w: segW, h: 40, type: 'jungle-ground' };
+    level.platforms.push(g);
+    grounds.push(g);
     x += segW;
     if (x < W - 200) {
-      x += 90 + Math.floor(rand() * (60 + diff * 80));
+      x += 60 + Math.floor(rand() * (20 + diff * 30));  // 60-110 max
+    } else {
+      break;
     }
   }
-  level.platforms.push({ x: W - 240, y: 460, w: 240, h: 40, type: 'jungle-ground' });
+  if (grounds.length === 0 || grounds[grounds.length - 1].x + grounds[grounds.length - 1].w < W - 240) {
+    const g = { x: W - 240, y: 460, w: 240, h: 40, type: 'jungle-ground' };
+    level.platforms.push(g);
+    grounds.push(g);
+  }
 
-  // Tree platforms
-  const treeCount = 5 + Math.floor(diff * 7);
+  // Tree platforms — above ground only, reachable from a normal jump
+  const treeCount = 4 + Math.floor(diff * 5);
   for (let i = 0; i < treeCount; i++) {
-    level.platforms.push({
-      x: 200 + i * (W - 400) / treeCount + (rand() - 0.5) * 80,
-      y: 240 + rand() * 180,
-      w: 70 + rand() * 60,
-      h: 16,
-      type: 'tree',
-    });
+    const g = grounds[Math.floor(rand() * grounds.length)];
+    if (g.w < 130) continue;
+    const tw = 70 + Math.floor(rand() * 60);
+    const tx = g.x + 20 + rand() * (g.w - 40 - tw);
+    const ty = 320 + Math.floor(rand() * 80);
+    level.platforms.push({ x: tx, y: ty, w: tw, h: 16, type: 'tree' });
   }
 
   // Vines (hang low enough to grab by jumping from the ground)
