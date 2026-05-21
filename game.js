@@ -1752,13 +1752,14 @@ function createChallenge(type, tube) {
     }
     ch.exitX = 240 + spikeCount * 280 + 60;
   } else if (type === 'iceball') {
-    ch.player = { x: 60, y: 380, w: 32, h: 32, vx: 0, vy: 0, onGround: false, radius: 18, rotation: 0 };
+    ch.player = { x: 60, y: 240, w: 32, h: 32, vx: 0, vy: 0, radius: 18, rotation: 0 };
     ch.balls = [];
-    for (let i = 0; i < 7; i++) {
-      const r = 16 + Math.random() * 8;  // 16-24, all medium-size to jump over
+    for (let i = 0; i < 9; i++) {
+      const onTop = i % 2 === 0;
+      const r = 16 + Math.random() * 6;  // 16-22
       ch.balls.push({
-        x: 280 + i * 240 + Math.random() * 50,
-        y: 412 - r,
+        x: 280 + i * 200 + Math.random() * 40,
+        y: onTop ? (104 + r) : (436 - r),  // alternate top corridor / bottom corridor
         r,
         vx: (Math.random() > 0.5 ? 1 : -1) * (1.0 + Math.random() * 1.2),
         minX: 200, maxX: 1900,
@@ -1888,22 +1889,28 @@ function updateSpikesChallenge() {
   }
 }
 
-// ----- Iceball challenge: roll past balls on ice
+// ----- Iceball challenge: float through a corridor, dodging snowballs above and below
 function updateIceballChallenge() {
   const ch = challenge;
   const p = ch.player;
-  // Become ball (rolls with momentum, slippery)
+  // Horizontal: ice rolling momentum
   if (isDown(K_LEFT))  p.vx -= 0.25;
   if (isDown(K_RIGHT)) p.vx += 0.25;
-  p.vx = clamp(p.vx, -7, 7);
+  p.vx = clamp(p.vx, -6, 6);
   p.vx *= 0.99;
-  if (pressed(K_JUMP) && p.onGround) { p.vy = -11; p.onGround = false; sfx.jump(); }
-  p.vy += GRAVITY;
-  if (p.vy > 14) p.vy = 14;
+  // Vertical: free up/down movement (no gravity)
+  let dy = 0;
+  if (isDown(K_JUMP)) dy -= 1;
+  if (isDown(K_DOWN)) dy += 1;
+  p.vy += dy * 0.5;
+  p.vy = clamp(p.vy, -5, 5);
+  if (dy === 0) p.vy *= 0.85;
   p.x += p.vx;
   p.y += p.vy;
-  if (p.y + p.h >= 412) { p.y = 412 - p.h; p.vy = 0; p.onGround = true; }
+  // Bounds: corridor between y=104 (ceiling) and y=436 (floor)
   p.x = clamp(p.x, 30, ch.exitX + 50);
+  if (p.y < 104) { p.y = 104; p.vy = 0; }
+  if (p.y + p.h > 436) { p.y = 436 - p.h; p.vy = 0; }
   p.rotation += p.vx * 0.1;
 
   for (const b of ch.balls) {
@@ -2050,24 +2057,29 @@ function drawIceballChallenge() {
   g.addColorStop(0, '#B0E0E6');
   g.addColorStop(1, '#80B8D0');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Ice ceiling
+  ctx.fillStyle = '#D0E8F0';
+  ctx.fillRect(0, 0, W, 104);
+  ctx.fillStyle = '#A0C8D8';
+  for (let i = 0; i < 40; i++) ctx.fillRect(i * 50, 102, 25, 2);
   // Ice floor
   ctx.fillStyle = '#D0E8F0';
-  ctx.fillRect(0, 412, W, 90);
+  ctx.fillRect(0, 436, W, 64);
   ctx.fillStyle = '#A0C8D8';
-  for (let i = 0; i < 40; i++) ctx.fillRect(i * 50, 412, 25, 2);
+  for (let i = 0; i < 40; i++) ctx.fillRect(i * 50, 436, 25, 2);
 
   const p = ch.player;
   const cx = clamp(p.x - W / 2, 0, ch.exitX);
   ctx.save();
   ctx.translate(-cx, 0);
-  // Exit flag
+  // Exit flag in middle of corridor
   ctx.fillStyle = '#8B4513';
-  ctx.fillRect(ch.exitX + 14, 320, 4, 92);
+  ctx.fillRect(ch.exitX + 14, 200, 4, 200);
   ctx.fillStyle = '#FFD700';
   ctx.beginPath();
-  ctx.moveTo(ch.exitX + 18, 320);
-  ctx.lineTo(ch.exitX + 50, 340);
-  ctx.lineTo(ch.exitX + 18, 360);
+  ctx.moveTo(ch.exitX + 18, 250);
+  ctx.lineTo(ch.exitX + 50, 270);
+  ctx.lineTo(ch.exitX + 18, 290);
   ctx.fill();
   // Balls
   for (const b of ch.balls) {
@@ -2096,7 +2108,7 @@ function drawIceballChallenge() {
   ctx.restore();
   drawParticles(false);
   ctx.restore();
-  drawChallengeHud('Roll and jump over the snowballs to reach the flag!', null);
+  drawChallengeHud('Move UP, DOWN, LEFT, RIGHT to dodge snowballs and reach the flag!', null);
 }
 
 function drawSwimChallenge() {
