@@ -322,8 +322,7 @@ function handleCanvasClick(cx, cy) {
     }
   } else if (state === STATE.GAME_OVER) {
     if (levelTransitionTimer <= 0) {
-      state = STATE.LEVEL_SELECT;
-      selectedLevel = currentLevel;
+      startLevel(currentLevel);
     }
   } else if (state === STATE.LEVEL_WIN) {
     if (levelTransitionTimer <= 0) {
@@ -1608,6 +1607,9 @@ function drawLevelWinOverlay() {
 function updateGameOver() {
   if (levelTransitionTimer > 0) levelTransitionTimer--;
   if (levelTransitionTimer <= 0 && (pressed(K_CONFIRM) || pressed(['enter']))) {
+    startLevel(currentLevel);
+  }
+  if (pressed(['escape'])) {
     state = STATE.LEVEL_SELECT;
     selectedLevel = currentLevel;
   }
@@ -1622,7 +1624,10 @@ function drawGameOverOverlay() {
   ctx.fillText('Game Over', W / 2, H / 2 - 20);
   ctx.fillStyle = 'white';
   ctx.font = '20px sans-serif';
-  ctx.fillText('Press SPACE to retry', W / 2, H / 2 + 30);
+  ctx.fillText('Press SPACE or tap to retry this level', W / 2, H / 2 + 30);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '14px sans-serif';
+  ctx.fillText('Esc for level select', W / 2, H / 2 + 60);
   ctx.textAlign = 'start';
 }
 
