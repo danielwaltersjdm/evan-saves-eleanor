@@ -1389,23 +1389,53 @@ function drawEnemies() {
       ctx.fillStyle = 'red';
       ctx.fillRect(e.x + (e.vx > 0 ? e.w - 8 : 4) - camera, e.y + 4, 3, 3);
     } else {
-      ctx.fillStyle = '#333';
-      ctx.fillRect(e.x - camera, e.y, e.w, e.h);
-      ctx.fillStyle = '#FF3030';
-      for (let i = 0; i <= 4; i++) {
-        const sx = e.x + i * 7 - camera;
-        ctx.beginPath();
-        ctx.moveTo(sx, e.y);
-        ctx.lineTo(sx + 3.5, e.y - 7);
-        ctx.lineTo(sx + 7, e.y);
-        ctx.fill();
-      }
-      ctx.fillStyle = '#FF4444';
-      ctx.fillRect(e.x + 6  - camera, e.y + 10, 5, 5);
-      ctx.fillRect(e.x + 17 - camera, e.y + 10, 5, 5);
+      // Poop devil walker
+      const ex = e.x - camera;
+      const ey = e.y;
+      const cx = ex + 14;
+      // Brown swirl body (bottom -> top)
+      ctx.fillStyle = '#5C3317';
+      ctx.beginPath(); ctx.ellipse(cx, ey + 24, 13, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, ey + 17, 10, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, ey + 10, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, ey + 5, 2.5, 0, Math.PI * 2); ctx.fill();
+      // Lighter brown highlights
+      ctx.fillStyle = '#8B5A2B';
+      ctx.beginPath(); ctx.ellipse(cx - 3, ey + 22, 6, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx - 2, ey + 15, 4, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx - 1, ey + 9, 2.5, 1, 0, 0, Math.PI * 2); ctx.fill();
+      // Red devil horns
+      ctx.fillStyle = '#C00000';
+      ctx.beginPath();
+      ctx.moveTo(cx - 7, ey + 6);
+      ctx.lineTo(cx - 5, ey - 2);
+      ctx.lineTo(cx - 2, ey + 5);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + 2, ey + 5);
+      ctx.lineTo(cx + 5, ey - 2);
+      ctx.lineTo(cx + 7, ey + 6);
+      ctx.fill();
+      // Eyes
       ctx.fillStyle = 'white';
-      ctx.fillRect(e.x + 7  - camera, e.y + 11, 2, 2);
-      ctx.fillRect(e.x + 18 - camera, e.y + 11, 2, 2);
+      ctx.beginPath(); ctx.arc(cx - 4, ey + 15, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 4, ey + 15, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'black';
+      ctx.fillRect(cx - 5, ey + 14, 2, 2);
+      ctx.fillRect(cx + 3, ey + 14, 2, 2);
+      // Angry eyebrows
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - 8, ey + 11); ctx.lineTo(cx - 2, ey + 13);
+      ctx.moveTo(cx + 2, ey + 13); ctx.lineTo(cx + 8, ey + 11);
+      ctx.stroke();
+      // Mean mouth with fangs
+      ctx.fillStyle = 'black';
+      ctx.fillRect(cx - 4, ey + 21, 8, 2);
+      ctx.fillStyle = 'white';
+      ctx.fillRect(cx - 3, ey + 23, 1.5, 1.5);
+      ctx.fillRect(cx + 1.5, ey + 23, 1.5, 1.5);
     }
   }
 }
