@@ -252,13 +252,13 @@ function buildJungleLevel(level, rand, diff) {
     });
   }
 
-  // Vines
+  // Vines (hang low enough to grab by jumping from the ground)
   const vineCount = 3 + Math.floor(diff * 5);
   for (let i = 0; i < vineCount; i++) {
     level.vines.push({
       x: 280 + i * (W - 560) / vineCount + (rand() - 0.5) * 60,
       yTop: 40,
-      yBot: 280 + rand() * 60,
+      yBot: 380 + rand() * 40,
     });
   }
 

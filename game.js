@@ -64,26 +64,28 @@ const K_CONFIRM = [' ', 'enter'];
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
   document.body.classList.add('touch');
   const tmap = {
-    'touch-left':  'arrowleft',
-    'touch-right': 'arrowright',
-    'touch-down':  'arrowdown',
-    'touch-jump':  ' ',
-    'touch-a':     'z',
-    'touch-b':     'x',
+    'touch-left':  ['arrowleft'],
+    'touch-right': ['arrowright'],
+    'touch-down':  ['arrowdown'],
+    'touch-jump':  [' ', 'arrowup'],
+    'touch-a':     ['z'],
+    'touch-b':     ['x'],
   };
-  for (const [id, key] of Object.entries(tmap)) {
+  for (const [id, keysForBtn] of Object.entries(tmap)) {
     const el = document.getElementById(id);
     if (!el) continue;
     const down = e => {
       e.preventDefault();
-      if (!keys[key]) justPressed[key] = true;
-      keys[key] = true;
+      for (const key of keysForBtn) {
+        if (!keys[key]) justPressed[key] = true;
+        keys[key] = true;
+      }
       el.classList.add('held');
       initAudio();
     };
     const up = e => {
       if (e) e.preventDefault();
-      keys[key] = false;
+      for (const key of keysForBtn) keys[key] = false;
       el.classList.remove('held');
     };
     el.addEventListener('touchstart',  down, { passive: false });
@@ -236,21 +238,29 @@ function respawnInLevel() {
     return;
   }
   sfx.hurt();
-  player.x = Math.max(level.spawn.x, player.x - 240);
+  // Always restart from the level spawn so the player never lands in a pit on respawn
+  player.x = level.spawn.x;
   player.y = level.spawn.y;
   player.vx = 0; player.vy = 0;
+  player.w = 28; player.h = 36;
   player.form = 'evan';
   player.camouflaged = false;
   player.invincible = 90;
   player.onVine = null;
+  player.ridingDolphin = false;
+  player.fishEaten = 0;
+  camera = 0;
   updateHUD();
 }
 
 function completeLevel() {
   sfx.win();
+  // Only credit coins the first time a level is cleared, so replaying doesn't double-count
+  if (!save.cleared[currentLevel]) {
+    save.totalCoins = (save.totalCoins | 0) + coins;
+  }
   save.cleared[currentLevel] = true;
   if (currentLevel + 1 > save.highestUnlocked) save.highestUnlocked = Math.min(30, currentLevel + 1);
-  save.totalCoins = (save.totalCoins | 0) + coins;
   saveProgress();
   if (currentLevel === 30) {
     state = STATE.FINAL_WIN;
@@ -785,7 +795,7 @@ function updateOceanPlayer() {
         player.form = 'shark';
         player.w = 44; player.h = 26;
         sfx.shark();
-        showMessage('You became a SHARK! Smash walls and eat more!', 180);
+        showMessage('SHARK! Now find the DOLPHIN to escape!', 240);
         if (level.dolphin) level.dolphin.activated = true;
       }
     }
@@ -816,7 +826,7 @@ function updateOceanPlayer() {
     }
   }
 
-  // Enemies (jellies)
+  // Enemies (jellies) — bounce non-shark players away with brief invincibility, don't kill them
   for (const e of level.enemies) {
     if (!e.alive) continue;
     if (e.type === 'jelly') {
@@ -829,8 +839,12 @@ function updateOceanPlayer() {
         sfx.defeat();
         addParticles(e.x + e.w / 2, e.y + e.h / 2, 10, '#FFA0A0');
       } else {
-        respawnInLevel();
-        return;
+        const dx = (player.x + player.w / 2) - (e.x + e.w / 2);
+        const dy = (player.y + player.h / 2) - (e.y + e.h / 2);
+        player.vx = dx >= 0 ? 6 : -6;
+        player.vy = dy >= 0 ? 3 : -3;
+        player.invincible = 50;
+        sfx.hurt();
       }
     }
   }
@@ -931,9 +945,14 @@ function updateLevelEntities() {
     }
   }
 
-  // Exit
+  // Exit (require all tubes to be completed first)
   if (rectsOverlap(player, level.exit)) {
-    completeLevel();
+    const tubesDone = level.tubes.every(t => t.completed);
+    if (tubesDone) {
+      completeLevel();
+    } else if (messageTimer <= 0) {
+      showMessage('Finish the green tube challenge first!', 90);
+    }
   }
 
   updateHUD();
@@ -1313,13 +1332,21 @@ function drawOceanEntities() {
       ctx.fillStyle = 'black';
       ctx.fillRect(d.x + d.w - 10 - camera, d.y + 8 + bob, 3, 3);
       // Label
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(d.x + d.w / 2 - 36 - camera, d.y - 22 + bob, 72, 16);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(d.x + d.w / 2 - 50 - camera, d.y - 26 + bob, 100, 18);
       ctx.fillStyle = '#FFD700';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Dolphin!', d.x + d.w / 2 - camera, d.y - 10 + bob);
+      ctx.fillText('RIDE ME!', d.x + d.w / 2 - camera, d.y - 12 + bob);
       ctx.textAlign = 'start';
+      // Pulsing arrow above
+      const pulse = Math.abs(Math.sin(t * 0.6)) * 6;
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.moveTo(d.x + d.w / 2 - 10 - camera, d.y - 46 - pulse + bob);
+      ctx.lineTo(d.x + d.w / 2 + 10 - camera, d.y - 46 - pulse + bob);
+      ctx.lineTo(d.x + d.w / 2 - camera, d.y - 30 - pulse + bob);
+      ctx.fill();
     }
   }
 }
@@ -1561,11 +1588,11 @@ function drawExit() {
 
 function drawMessage() {
   if (messageTimer > 0 && messageText) {
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.font = 'bold 16px sans-serif';
     const w = ctx.measureText(messageText).width + 24;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(W / 2 - w / 2, 16, w, 32);
     ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(messageText, W / 2, 38);
     ctx.textAlign = 'start';
@@ -1714,25 +1741,28 @@ function createChallenge(type, tube) {
   } else if (type === 'spikes') {
     ch.player = { x: 60, y: 320, w: 28, h: 36, vx: 0, vy: 0, onGround: false, facing: 1 };
     ch.spikes = [];
-    ch.exitX = 1800;
-    for (let i = 0; i < 14; i++) {
+    const spikeCount = 6;
+    for (let i = 0; i < spikeCount; i++) {
       ch.spikes.push({
-        x: 180 + i * 110 + Math.random() * 30,
+        x: 240 + i * 280 + Math.random() * 30,
         y: 420,
-        w: 60,
+        w: 50,
         h: 30,
       });
     }
+    ch.exitX = 240 + spikeCount * 280 + 60;
   } else if (type === 'iceball') {
-    ch.player = { x: 60, y: 380, w: 32, h: 32, vx: 0, vy: 0, onGround: false, radius: 16, rotation: 0 };
+    ch.player = { x: 60, y: 380, w: 32, h: 32, vx: 0, vy: 0, onGround: false, radius: 18, rotation: 0 };
     ch.balls = [];
-    for (let i = 0; i < 8; i++) {
-      const r = 14 + Math.random() * 22;
+    for (let i = 0; i < 10; i++) {
+      // Alternate: even = small (squishable, r < player.radius - 2), odd = big (dodge)
+      const small = i % 2 === 0;
+      const r = small ? 7 + Math.random() * 5 : 22 + Math.random() * 14;
       ch.balls.push({
-        x: 250 + i * 200 + Math.random() * 80,
+        x: 240 + i * 170 + Math.random() * 60,
         y: 412 - r,
         r,
-        vx: (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2),
+        vx: (Math.random() > 0.5 ? 1 : -1) * (1.4 + Math.random() * 1.8),
         minX: 200, maxX: 1900,
       });
     }
@@ -1834,21 +1864,20 @@ function updateBallsChallenge() {
   }
 }
 
-// ----- Spikes challenge: traverse, jumping over spike pits
+// ----- Spikes challenge: auto-traverse right, jump over spike pits
 function updateSpikesChallenge() {
   const ch = challenge;
   const p = ch.player;
-  if (isDown(K_LEFT))  { p.vx = -3.6; p.facing = -1; }
-  else if (isDown(K_RIGHT)) { p.vx = 3.6; p.facing = 1; }
-  else p.vx = 0;
-  if (pressed(K_JUMP) && p.onGround) { p.vy = -12.5; p.onGround = false; sfx.jump(); }
+  // Auto-move to the right at constant speed
+  p.vx = 4;
+  p.facing = 1;
+  if (pressed(K_JUMP) && p.onGround) { p.vy = -13; p.onGround = false; sfx.jump(); }
   p.vy += GRAVITY;
   if (p.vy > 14) p.vy = 14;
   p.x += p.vx; p.y += p.vy;
   if (p.y + p.h >= 460) { p.y = 460 - p.h; p.vy = 0; p.onGround = true; }
   p.x = clamp(p.x, 20, ch.exitX + 50);
 
-  // Spike collision
   for (const s of ch.spikes) {
     if (p.x + p.w > s.x + 4 && p.x < s.x + s.w - 4 &&
         p.y + p.h > s.y + 4 && p.y < s.y + s.h) {
@@ -1856,7 +1885,6 @@ function updateSpikesChallenge() {
       return;
     }
   }
-  // Camera in challenge: simple clamp
   if (p.x > ch.exitX) {
     challengeSucceed();
   }
@@ -2022,7 +2050,7 @@ function drawSpikesChallenge() {
   // Player
   drawEvanAt(p.x, p.y);
   ctx.restore();
-  drawChallengeHud('Jump over the spikes! Reach the flag!', null);
+  drawChallengeHud('Auto-running! Press SPACE to jump over spikes!', null);
 }
 
 function drawIceballChallenge() {
