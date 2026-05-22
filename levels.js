@@ -333,12 +333,21 @@ function buildJungleLevel(level, rand, diff) {
 }
 
 function placeTube(level, rand) {
-  // Find a ground platform wide enough to host a tube
-  const grounds = level.platforms.filter(p =>
+  // Tube is solid, so it must never sit in front of the exit or the player can't reach the goal.
+  // Require the tube's right edge to be at least 90px before the exit.
+  const exitX = level.exit.x;
+  const wideGrounds = level.platforms.filter(p =>
     (p.type === 'ground' || p.type === 'jungle-ground') && p.w >= 140);
-  if (grounds.length === 0) return;
-  const target = grounds[Math.floor(rand() * grounds.length)];
-  const tx = target.x + 40 + Math.floor(rand() * (target.w - 100));
+  if (wideGrounds.length === 0) return;
+  // Prefer grounds whose right edge is well before the exit
+  const safe = wideGrounds.filter(g => g.x + g.w + 40 < exitX);
+  const candidates = safe.length > 0 ? safe : wideGrounds;
+  const target = candidates[Math.floor(rand() * candidates.length)];
+  const tubeMaxX = exitX - 90; // tube right edge stays >= 40px before exit
+  const minStart = target.x + 40;
+  const maxStart = Math.min(target.x + target.w - 60, tubeMaxX);
+  if (maxStart <= minStart) return; // no safe spot on this ground
+  const tx = minStart + Math.floor(rand() * (maxStart - minStart));
   level.tubes.push({
     x: tx, y: target.y - 42, w: 50, h: 42,
     challenge: level.challengeType,
