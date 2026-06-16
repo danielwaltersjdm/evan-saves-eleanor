@@ -107,6 +107,27 @@ muteBtn.addEventListener('click', () => {
   muteBtn.classList.toggle('muted', isMuted);
 });
 
+// Fullscreen button
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+fullscreenBtn.addEventListener('click', () => {
+  const el = document.getElementById('game-container');
+  const inFS = document.fullscreenElement || document.webkitFullscreenElement;
+  if (inFS) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  } else {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) {
+      const p = req.call(el);
+      if (p && p.catch) p.catch(() => {});
+    }
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  const inFS = document.fullscreenElement || document.webkitFullscreenElement;
+  fullscreenBtn.textContent = inFS ? '⤤' : '⛶';
+});
+
 // Canvas click → confirm (for title/level select on touch)
 canvas.addEventListener('click', e => {
   initAudio();
