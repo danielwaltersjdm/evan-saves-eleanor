@@ -25,34 +25,9 @@ function seededRand(seed) {
 }
 
 const LEVELS = [];
-for (let i = 1; i <= 31; i++) LEVELS.push(generateLevel(i));
+for (let i = 1; i <= 30; i++) LEVELS.push(generateLevel(i));
 
 function generateLevel(num) {
-  // Level 30: rope-climb rescue (entirely a special state)
-  if (num === 30) {
-    return {
-      num: 30, world: 4, worldName: 'Castle', worldW: 800, theme: 4,
-      platforms: [], enemies: [], powerups: [], coins: [], tubes: [], vines: [],
-      spawn: { x: 60, y: 300 },
-      exit: { x: 700, y: 400, w: 32, h: 38 },
-      hasEleanor: true,
-      challengeType: 'none',
-      special: 'rope',
-    };
-  }
-  // Level 31: dress-up Eleanor finale
-  if (num === 31) {
-    return {
-      num: 31, world: 5, worldName: 'Dress Up', worldW: 800, theme: 5,
-      platforms: [], enemies: [], powerups: [], coins: [], tubes: [], vines: [],
-      spawn: { x: 60, y: 300 },
-      exit: { x: 700, y: 400, w: 32, h: 38 },
-      hasEleanor: true,
-      challengeType: 'none',
-      special: 'dressup',
-    };
-  }
-
   const world = worldOf(num);
   const diff = (num - 1) / 29; // 0..1
   const rand = seededRand(num * 7919);
@@ -71,12 +46,11 @@ function generateLevel(num) {
     vines: [],
     spawn: { x: 60, y: 300 },
     exit: { x: baseLen - 80, y: 422, w: 32, h: 38 },
-    hasEleanor: false,
-    hasCastleExit: num === 29,  // level 29: little castle with Eleanor in it instead of a flag
+    hasEleanor: num === 30,
     challengeType: CHALLENGE_TYPES[(num - 1) % CHALLENGE_TYPES.length],
     theme: world.id,
-    slippery: world.id === 1,
-    underwater: world.id === 2,
+    slippery: world.id === 1,   // snow world: low friction
+    underwater: world.id === 2, // ocean world: swim physics
   };
 
   if (world.id === 2) {

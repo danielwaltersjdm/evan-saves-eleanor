@@ -13,6 +13,7 @@ const STARTING_LIVES = 3;
 const STATE = {
   TITLE: 0, LEVEL_SELECT: 1, PLAYING: 2, CHALLENGE: 3,
   LEVEL_WIN: 4, GAME_OVER: 5, FINAL_WIN: 6,
+  ROPE_CLIMB: 7, DRESSUP: 8,
 };
 let state = STATE.TITLE;
 
@@ -167,6 +168,8 @@ let particles = [];
 let selectedLevel = 1;
 let levelTransitionTimer = 0;
 let challenge = null;
+let ropeClimb = null;
+let dressup = null;
 
 // =========================================================
 // HELPERS
@@ -221,6 +224,8 @@ function drawParticles(useCamera = true) {
 function startLevel(num, freshLives = true) {
   currentLevel = num;
   level = LEVELS[num - 1];
+  if (level.special === 'rope') { startRopeClimb(); updateHUD(); return; }
+  if (level.special === 'dressup') { startDressup(); updateHUD(); return; }
   // Clone enemies so we can reset alive states each entry
   for (const e of level.enemies) e.alive = true;
   for (const c of level.coins) c.taken = false;
@@ -311,6 +316,8 @@ function update() {
     case STATE.LEVEL_WIN:    updateLevelWin(); break;
     case STATE.GAME_OVER:    updateGameOver(); break;
     case STATE.FINAL_WIN:    updateFinalWin(); break;
+    case STATE.ROPE_CLIMB:   updateRopeClimb(); break;
+    case STATE.DRESSUP:      updateDressup(); break;
   }
   if (messageTimer > 0) messageTimer--;
   updateParticles();
@@ -322,9 +329,11 @@ function draw() {
     case STATE.LEVEL_SELECT: drawLevelSelect(); break;
     case STATE.PLAYING:      drawPlaying(); break;
     case STATE.CHALLENGE:    drawChallenge(); break;
-    case STATE.LEVEL_WIN:    drawPlaying(); drawLevelWinOverlay(); break;
-    case STATE.GAME_OVER:    drawPlaying(); drawGameOverOverlay(); break;
+    case STATE.LEVEL_WIN:    if (ropeClimb) drawRopeClimb(); else drawPlaying(); drawLevelWinOverlay(); break;
+    case STATE.GAME_OVER:    if (ropeClimb) drawRopeClimb(); else drawPlaying(); drawGameOverOverlay(); break;
     case STATE.FINAL_WIN:    drawFinalWin(); break;
+    case STATE.ROPE_CLIMB:   drawRopeClimb(); break;
+    case STATE.DRESSUP:      drawDressup(); break;
   }
 }
 
@@ -335,9 +344,9 @@ function handleCanvasClick(cx, cy) {
     sfx.start();
   } else if (state === STATE.LEVEL_SELECT) {
     // Detect grid click
-    const gridX = 80, gridY = 130;
-    const cellW = 100, cellH = 60;
-    for (let i = 0; i < 30; i++) {
+    const gridX = 80, gridY = 115;
+    const cellW = 100, cellH = 55;
+    for (let i = 0; i < 31; i++) {
       const col = i % 6, row = Math.floor(i / 6);
       const x = gridX + col * cellW;
       const y = gridY + row * cellH;
@@ -351,6 +360,24 @@ function handleCanvasClick(cx, cy) {
         return;
       }
     }
+  } else if (state === STATE.DRESSUP) {
+    const hit = dressupHitTest(cx, cy);
+    if (!hit) return;
+    if (hit.kind === 'done') {
+      if (dressup.happy) {
+        save.cleared[31] = true;
+        if (31 > save.highestUnlocked) save.highestUnlocked = 31;
+        saveProgress();
+        state = STATE.FINAL_WIN;
+        levelTransitionTimer = 180;
+        sfx.bigWin();
+      } else {
+        sfx.hurt();
+      }
+      return;
+    }
+    dressup[hit.kind] = hit.index;
+    sfx.coin();
   } else if (state === STATE.GAME_OVER) {
     if (levelTransitionTimer <= 0) {
       startLevel(currentLevel);
@@ -454,9 +481,9 @@ function drawMiniEleanor(x, y) {
 // =========================================================
 function updateLevelSelect() {
   if (pressed(K_LEFT))  { selectedLevel = Math.max(1, selectedLevel - 1); sfx.select(); }
-  if (pressed(K_RIGHT)) { selectedLevel = Math.min(30, selectedLevel + 1); sfx.select(); }
+  if (pressed(K_RIGHT)) { selectedLevel = Math.min(31, selectedLevel + 1); sfx.select(); }
   if (pressed(K_UP))    { selectedLevel = Math.max(1, selectedLevel - 6); sfx.select(); }
-  if (pressed(K_DOWN))  { selectedLevel = Math.min(30, selectedLevel + 6); sfx.select(); }
+  if (pressed(K_DOWN))  { selectedLevel = Math.min(31, selectedLevel + 6); sfx.select(); }
   if (pressed(K_CONFIRM)) {
     if (selectedLevel <= save.highestUnlocked) startLevel(selectedLevel);
   }
@@ -472,25 +499,24 @@ function drawLevelSelect() {
   ctx.fillRect(0, 0, W, H);
 
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 36px sans-serif';
+  ctx.font = 'bold 32px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Choose a Level', W / 2, 60);
+  ctx.fillText('Choose a Level', W / 2, 48);
 
-  // Grid: 5 rows (one per world), 6 cols
-  const gridX = 80, gridY = 130;
-  const cellW = 100, cellH = 60;
+  // Grid: 6 rows (one per world + bonus), 6 cols
+  const gridX = 80, gridY = 115;
+  const cellW = 100, cellH = 55;
 
-  // World labels (rows)
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'right';
-  for (let w = 0; w < 5; w++) {
+  for (let w = 0; w < 6; w++) {
     const world = WORLDS[w];
     ctx.fillStyle = worldColor(world.id);
     ctx.fillText(world.name, gridX - 8, gridY + w * cellH + cellH / 2 + 5);
   }
 
   ctx.textAlign = 'center';
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 31; i++) {
     const col = i % 6, row = Math.floor(i / 6);
     const x = gridX + col * cellW;
     const y = gridY + row * cellH;
@@ -511,17 +537,17 @@ function drawLevelSelect() {
     }
 
     ctx.fillStyle = unlocked ? 'white' : '#666';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(lvl.toString(), x + (cellW - 8) / 2, y + 32);
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(lvl.toString(), x + (cellW - 8) / 2, y + 28);
 
     if (cleared) {
       ctx.fillStyle = '#FFD700';
-      ctx.font = '20px sans-serif';
-      ctx.fillText('★', x + (cellW - 8) / 2, y + 52);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('★', x + (cellW - 8) / 2, y + 46);
     } else if (!unlocked) {
       ctx.fillStyle = '#888';
-      ctx.font = '18px sans-serif';
-      ctx.fillText('🔒', x + (cellW - 8) / 2, y + 52);
+      ctx.font = '16px sans-serif';
+      ctx.fillText('🔒', x + (cellW - 8) / 2, y + 46);
     }
   }
 
@@ -535,7 +561,7 @@ function drawLevelSelect() {
 }
 
 function worldColor(id) {
-  return ['#4a8a4a', '#7ab8d8', '#3a6a9a', '#4a6a3a', '#6a3a3a'][id];
+  return ['#4a8a4a', '#7ab8d8', '#3a6a9a', '#4a6a3a', '#6a3a3a', '#a04080'][id];
 }
 
 // =========================================================
@@ -1543,79 +1569,125 @@ function drawSharkSprite(x, y) { drawSharkFigure(x - camera, y, player.facing); 
 
 function drawEvanFigure(sx, sy) {
   const cx = sx + 14;
-  // Hair back
-  ctx.fillStyle = '#3B2417';
-  ctx.beginPath(); ctx.ellipse(cx, sy + 12, 10.5, 11, 0, 0, Math.PI * 2); ctx.fill();
+  // Long flowing brown hair (back)
+  ctx.fillStyle = '#5C3A1A';
+  ctx.beginPath();
+  ctx.ellipse(cx, sy + 22, 14, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
   // Head
   ctx.fillStyle = '#FFDBAC';
-  ctx.beginPath(); ctx.arc(cx, sy + 12, 8.5, 0, Math.PI * 2); ctx.fill();
-  // Bangs sweep
-  ctx.fillStyle = '#3B2417';
+  ctx.beginPath(); ctx.arc(cx, sy + 13, 8.5, 0, Math.PI * 2); ctx.fill();
+  // Bangs swoop
+  ctx.fillStyle = '#5C3A1A';
   ctx.beginPath();
-  ctx.moveTo(cx - 8, sy + 8);
-  ctx.quadraticCurveTo(cx, sy + 3, cx + 8, sy + 6);
-  ctx.quadraticCurveTo(cx + 2, sy + 12, cx - 8, sy + 8);
+  ctx.moveTo(cx - 8, sy + 9);
+  ctx.quadraticCurveTo(cx, sy + 4, cx + 8, sy + 7);
+  ctx.quadraticCurveTo(cx + 2, sy + 13, cx - 8, sy + 9);
   ctx.fill();
+  // Side hair strands flowing past shoulders
+  ctx.fillStyle = '#5C3A1A';
+  ctx.beginPath();
+  ctx.ellipse(cx - 12, sy + 26, 4, 9, -0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx + 12, sy + 26, 4, 9, 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  // Pink crown with hearts
+  ctx.fillStyle = '#FF99CC';
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, sy + 3);
+  ctx.lineTo(cx - 5, sy - 3);
+  ctx.lineTo(cx - 2, sy + 3);
+  ctx.lineTo(cx, sy - 5);
+  ctx.lineTo(cx + 2, sy + 3);
+  ctx.lineTo(cx + 5, sy - 3);
+  ctx.lineTo(cx + 8, sy + 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(cx - 8, sy + 3, 16, 2.5);
+  // Crown jewels
+  ctx.fillStyle = '#E04A95';
+  ctx.beginPath(); ctx.arc(cx, sy + 4, 1.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.arc(cx - 5, sy + 4, 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 5, sy + 4, 0.9, 0, Math.PI * 2); ctx.fill();
   // Eyes
   ctx.fillStyle = 'white';
-  ctx.beginPath(); ctx.arc(cx - 3.2, sy + 12, 2.2, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 3.2, sy + 12, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - 3.2, sy + 13, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.2, sy + 13, 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#1A3050';
-  ctx.beginPath(); ctx.arc(cx - 2.9, sy + 12.3, 1.3, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 3.5, sy + 12.3, 1.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - 2.9, sy + 13.3, 1.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.5, sy + 13.3, 1.3, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'white';
-  ctx.fillRect(cx - 3.3, sy + 11.5, 0.8, 0.8);
-  ctx.fillRect(cx + 3.1, sy + 11.5, 0.8, 0.8);
+  ctx.fillRect(cx - 3.3, sy + 12.5, 0.8, 0.8);
+  ctx.fillRect(cx + 3.1, sy + 12.5, 0.8, 0.8);
+  // Eyelashes
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, sy + 11); ctx.lineTo(cx - 4, sy + 10);
+  ctx.moveTo(cx + 5, sy + 11); ctx.lineTo(cx + 4, sy + 10);
+  ctx.stroke();
   // Cheeks
-  ctx.fillStyle = 'rgba(255,140,170,0.55)';
-  ctx.beginPath(); ctx.arc(cx - 6, sy + 15, 1.7, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 6, sy + 15, 1.7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,140,170,0.6)';
+  ctx.beginPath(); ctx.arc(cx - 6, sy + 16, 1.7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 6, sy + 16, 1.7, 0, Math.PI * 2); ctx.fill();
   // Smile
   ctx.strokeStyle = '#7A2A40';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.arc(cx, sy + 16, 2.3, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.arc(cx, sy + 17, 2.3, 0.15 * Math.PI, 0.85 * Math.PI);
   ctx.stroke();
-  // Neck
-  ctx.fillStyle = '#FFDBAC';
-  ctx.fillRect(cx - 2, sy + 20, 4, 2);
-  // Dress (pink)
+  // Princess dress (pink with purple bodice)
   ctx.fillStyle = '#FF69B4';
   ctx.beginPath();
-  ctx.moveTo(cx - 6, sy + 22);
-  ctx.lineTo(cx + 6, sy + 22);
-  ctx.quadraticCurveTo(cx + 12, sy + 30, cx + 12, sy + 34);
-  ctx.lineTo(cx - 12, sy + 34);
-  ctx.quadraticCurveTo(cx - 12, sy + 30, cx - 6, sy + 22);
+  ctx.moveTo(cx - 7, sy + 22);
+  ctx.lineTo(cx + 7, sy + 22);
+  ctx.quadraticCurveTo(cx + 14, sy + 32, cx + 14, sy + 36);
+  ctx.lineTo(cx - 14, sy + 36);
+  ctx.quadraticCurveTo(cx - 14, sy + 32, cx - 7, sy + 22);
   ctx.closePath();
   ctx.fill();
   // Dress shading
   ctx.fillStyle = 'rgba(160,40,100,0.25)';
   ctx.beginPath();
   ctx.moveTo(cx + 3, sy + 22);
-  ctx.quadraticCurveTo(cx + 12, sy + 30, cx + 12, sy + 34);
-  ctx.lineTo(cx + 5, sy + 34);
+  ctx.quadraticCurveTo(cx + 14, sy + 32, cx + 14, sy + 36);
+  ctx.lineTo(cx + 5, sy + 36);
+  ctx.closePath();
+  ctx.fill();
+  // Purple bodice
+  ctx.fillStyle = '#C040A0';
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, sy + 22);
+  ctx.lineTo(cx + 6, sy + 22);
+  ctx.lineTo(cx + 6, sy + 26);
+  ctx.lineTo(cx - 6, sy + 26);
   ctx.closePath();
   ctx.fill();
   // V-neck
-  ctx.fillStyle = '#FFB8D8';
+  ctx.fillStyle = '#FFDBAC';
   ctx.beginPath();
-  ctx.moveTo(cx - 4, sy + 22);
+  ctx.moveTo(cx - 3, sy + 22);
   ctx.lineTo(cx, sy + 25);
-  ctx.lineTo(cx + 4, sy + 22);
+  ctx.lineTo(cx + 3, sy + 22);
   ctx.closePath();
   ctx.fill();
+  // Gold sparkles on skirt
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.arc(cx - 6, sy + 30, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 4, sy + 28, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, sy + 34, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 7, sy + 32, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - 8, sy + 33, 0.8, 0, Math.PI * 2); ctx.fill();
   // Arms
   ctx.fillStyle = '#FFDBAC';
-  ctx.beginPath(); ctx.ellipse(cx - 9, sy + 24, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx + 9, sy + 24, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
-  // Legs
-  ctx.fillRect(cx - 5, sy + 34, 3, 1.5);
-  ctx.fillRect(cx + 2, sy + 34, 3, 1.5);
-  // Shoes
-  ctx.fillStyle = '#5A3A1A';
-  ctx.beginPath(); ctx.ellipse(cx - 3.5, sy + 35.6, 3, 1.3, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx + 3.5, sy + 35.6, 3, 1.3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx - 10, sy + 25, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 10, sy + 25, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
+  // Gold slippers
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.ellipse(cx - 3, sy + 36, 2.8, 1.3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 3, sy + 36, 2.8, 1.3, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawDogFigure(sx, sy, facing) {
@@ -1889,6 +1961,186 @@ function drawEleanorFigure(sx, sy) {
   ctx.beginPath(); ctx.ellipse(cx + 10, sy + 26, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
 }
 
+function drawCaptiveEleanorFigure(sx, sy) {
+  const cx = sx + 16;
+  // Stringy, dirty long hair
+  ctx.fillStyle = '#8B7355';
+  ctx.beginPath();
+  ctx.ellipse(cx, sy + 22, 12, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Loose strands flying around
+  ctx.strokeStyle = '#8B7355';
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - 11, sy + 12); ctx.quadraticCurveTo(cx - 15, sy + 18, cx - 13, sy + 24);
+  ctx.moveTo(cx + 11, sy + 12); ctx.quadraticCurveTo(cx + 16, sy + 17, cx + 14, sy + 22);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  // Head (paler, dirty)
+  ctx.fillStyle = '#E8C5A0';
+  ctx.beginPath(); ctx.arc(cx, sy + 13, 8.5, 0, Math.PI * 2); ctx.fill();
+  // Dirt smudges
+  ctx.fillStyle = 'rgba(60,40,20,0.35)';
+  ctx.beginPath(); ctx.arc(cx + 4, sy + 16, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - 5, sy + 14, 1.8, 0, Math.PI * 2); ctx.fill();
+  // Messy bangs (jagged)
+  ctx.fillStyle = '#8B7355';
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, sy + 9);
+  ctx.lineTo(cx - 5, sy + 5);
+  ctx.lineTo(cx - 2, sy + 11);
+  ctx.lineTo(cx + 1, sy + 4);
+  ctx.lineTo(cx + 4, sy + 10);
+  ctx.lineTo(cx + 8, sy + 6);
+  ctx.lineTo(cx + 9, sy + 12);
+  ctx.quadraticCurveTo(cx, sy + 15, cx - 8, sy + 9);
+  ctx.closePath();
+  ctx.fill();
+  // Sad eyes
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(cx - 3.2, sy + 13, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.2, sy + 13, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3A7050';
+  ctx.beginPath(); ctx.arc(cx - 3, sy + 13.5, 1.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.4, sy + 13.5, 1.2, 0, Math.PI * 2); ctx.fill();
+  // Sad eyebrows tilted up at inner ends
+  ctx.strokeStyle = '#5C3A1A';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, sy + 10); ctx.lineTo(cx - 1, sy + 11.5);
+  ctx.moveTo(cx + 1, sy + 11.5); ctx.lineTo(cx + 6, sy + 10);
+  ctx.stroke();
+  // Frown
+  ctx.strokeStyle = '#7A2A40';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.arc(cx, sy + 20, 2.5, Math.PI * 1.15, Math.PI * 1.85, true);
+  ctx.stroke();
+  // Tear
+  ctx.fillStyle = 'rgba(150,200,255,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(cx + 4, sy + 17, 1, 1.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Tattered grey dress
+  ctx.fillStyle = '#6A5A4A';
+  ctx.beginPath();
+  ctx.moveTo(cx - 7, sy + 22);
+  ctx.lineTo(cx + 7, sy + 22);
+  ctx.lineTo(cx + 12, sy + 32);
+  // Ragged hem
+  ctx.lineTo(cx + 11, sy + 37);
+  ctx.lineTo(cx + 6, sy + 33);
+  ctx.lineTo(cx + 3, sy + 37);
+  ctx.lineTo(cx - 1, sy + 33);
+  ctx.lineTo(cx - 4, sy + 37);
+  ctx.lineTo(cx - 8, sy + 33);
+  ctx.lineTo(cx - 11, sy + 37);
+  ctx.lineTo(cx - 12, sy + 32);
+  ctx.closePath();
+  ctx.fill();
+  // Stain patches
+  ctx.fillStyle = '#4A3A2A';
+  ctx.fillRect(cx - 6, sy + 27, 3.5, 3);
+  ctx.fillRect(cx + 4, sy + 30, 4, 2.5);
+  // Arms (dirty)
+  ctx.fillStyle = '#E8C5A0';
+  ctx.beginPath(); ctx.ellipse(cx - 10, sy + 26, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 10, sy + 26, 2, 5, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawCastleExit(x, y) {
+  const sx = x - camera;
+  // Castle main body
+  ctx.fillStyle = '#9A9A9A';
+  ctx.fillRect(sx, y - 50, 60, 90);
+  // Stone block pattern
+  ctx.fillStyle = '#7A7A7A';
+  for (let by = y - 48; by < y + 38; by += 12) {
+    const off = (Math.floor((by - y) / 12) % 2) * 10;
+    for (let bx = sx + off; bx < sx + 60; bx += 20) {
+      ctx.fillRect(bx, by, 18, 10);
+    }
+  }
+  // Crenellations on top
+  ctx.fillStyle = '#9A9A9A';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(sx + i * 12, y - 58, 8, 10);
+  }
+  // Flag pole + flag on top
+  ctx.fillStyle = '#3A2A1A';
+  ctx.fillRect(sx + 28, y - 75, 2, 18);
+  ctx.fillStyle = '#E04A95';
+  ctx.beginPath();
+  ctx.moveTo(sx + 30, y - 73);
+  ctx.lineTo(sx + 44, y - 69);
+  ctx.lineTo(sx + 30, y - 65);
+  ctx.closePath();
+  ctx.fill();
+  // Door (arched)
+  ctx.fillStyle = '#3A2A1A';
+  ctx.beginPath();
+  ctx.moveTo(sx + 22, y + 40);
+  ctx.lineTo(sx + 22, y + 18);
+  ctx.arc(sx + 30, y + 18, 8, Math.PI, 0);
+  ctx.lineTo(sx + 38, y + 40);
+  ctx.closePath();
+  ctx.fill();
+  // Door planks
+  ctx.strokeStyle = '#1A0A0A';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(sx + 26, y + 18); ctx.lineTo(sx + 26, y + 40);
+  ctx.moveTo(sx + 30, y + 12); ctx.lineTo(sx + 30, y + 40);
+  ctx.moveTo(sx + 34, y + 18); ctx.lineTo(sx + 34, y + 40);
+  ctx.stroke();
+  // Window with Eleanor's face
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(sx + 8, y - 40, 16, 18);
+  // Hair behind
+  ctx.fillStyle = '#E5C16A';
+  ctx.beginPath();
+  ctx.arc(sx + 16, y - 32, 6, Math.PI, Math.PI * 2);
+  ctx.fill();
+  // Face
+  ctx.fillStyle = '#FFDBAC';
+  ctx.beginPath();
+  ctx.arc(sx + 16, y - 30, 5, 0, Math.PI * 2);
+  ctx.fill();
+  // Tiny crown
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(sx + 13, y - 37, 6, 2);
+  ctx.beginPath();
+  ctx.moveTo(sx + 13, y - 37);
+  ctx.lineTo(sx + 14.5, y - 40);
+  ctx.lineTo(sx + 16, y - 37);
+  ctx.lineTo(sx + 17.5, y - 40);
+  ctx.lineTo(sx + 19, y - 37);
+  ctx.closePath();
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle = 'black';
+  ctx.fillRect(sx + 14, y - 30, 1.2, 1.2);
+  ctx.fillRect(sx + 17, y - 30, 1.2, 1.2);
+  // Tiny smile
+  ctx.strokeStyle = '#7A2A40';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(sx + 16, y - 28, 1.5, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+  // Right side window decoration
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(sx + 38, y - 40, 14, 18);
+  // Castle label
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(sx + 30 - 50, y - 90, 100, 16);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText("Eleanor's Castle!", sx + 30, y - 78);
+  ctx.textAlign = 'start';
+}
+
 function drawDolphinFigure(sx, sy, facing) {
   facing = facing || 1;
   const cx = sx + 26;
@@ -1946,6 +2198,10 @@ function drawExit() {
     ctx.textAlign = 'center';
     ctx.fillText('Exit', level.exit.x + 16 - camera, level.exit.y - 6);
     ctx.textAlign = 'start';
+    return;
+  }
+  if (level.hasCastleExit) {
+    drawCastleExit(level.exit.x - 14, level.exit.y);
     return;
   }
   if (level.hasEleanor) {
@@ -2572,6 +2828,572 @@ function drawChallengeHud(text, timer) {
 
 function drawEvanAt(x, y) {
   drawEvanFigure(x, y);
+}
+
+// =========================================================
+// ROPE CLIMB (Level 30)
+// =========================================================
+function startRopeClimb() {
+  state = STATE.ROPE_CLIMB;
+  ropeClimb = {
+    px: 400, py: 1400,
+    pvx: 0,
+    eleanorY: 100,
+    cameraY: 0,
+    projectiles: [],
+    spawnTimer: 60,
+    wind: 0,
+    windTimer: 0,
+    climbBoost: 0,
+    invincible: 60,
+    rescued: false,
+    rescuedTimer: 0,
+  };
+  lives = STARTING_LIVES;
+  coins = 0;
+  currentLevel = 30;
+}
+
+function updateRopeClimb() {
+  const rc = ropeClimb;
+  if (pressed(['escape'])) { state = STATE.LEVEL_SELECT; selectedLevel = 30; ropeClimb = null; return; }
+  if (rc.rescued) {
+    rc.rescuedTimer--;
+    rc.py = Math.max(rc.eleanorY, rc.py - 1);
+    if (rc.rescuedTimer <= 0) {
+      // Auto-advance to dress-up
+      save.cleared[30] = true;
+      if (31 > save.highestUnlocked) save.highestUnlocked = 31;
+      saveProgress();
+      ropeClimb = null;
+      startLevel(31);
+    }
+    return;
+  }
+
+  // Wind shifts every couple seconds
+  rc.windTimer--;
+  if (rc.windTimer <= 0) {
+    rc.wind = (Math.random() - 0.5) * 1.6;
+    rc.windTimer = 90 + Math.floor(Math.random() * 60);
+  }
+  // Climb (N or A/touch-A or up arrow)
+  if (pressed(['n']) || pressed(['z']) || pressed(K_JUMP)) {
+    rc.climbBoost = 16;
+    sfx.jump();
+  }
+  if (rc.climbBoost > 0) {
+    rc.py -= 3;
+    rc.climbBoost--;
+  } else {
+    rc.py -= 0.35; // slow auto-climb
+  }
+  // Sideways control: B / X / arrows
+  let dx = 0;
+  if (isDown(K_LEFT))  dx -= 1;
+  if (isDown(K_RIGHT)) dx += 1;
+  if (isDown(['b'])) dx -= 1;
+  if (isDown(['x'])) dx -= 1;
+  rc.pvx += dx * 0.7 + rc.wind * 0.35;
+  rc.pvx = clamp(rc.pvx, -4.5, 4.5);
+  rc.pvx *= 0.92;
+  rc.px += rc.pvx;
+  rc.px = clamp(rc.px, 110, 690);
+  // Spawn projectiles from above
+  rc.spawnTimer--;
+  if (rc.spawnTimer <= 0) {
+    const type = Math.random() > 0.5 ? 'bomb' : 'knife';
+    rc.projectiles.push({
+      x: 130 + Math.random() * 540,
+      y: rc.py - 320,
+      vy: 2.5 + Math.random() * 2,
+      type,
+      r: type === 'bomb' ? 14 : 9,
+    });
+    rc.spawnTimer = 38 - Math.min(20, Math.floor((1400 - rc.py) / 60));
+  }
+  // Update projectiles + check collision
+  for (const p of rc.projectiles) {
+    p.y += p.vy;
+    if (rc.invincible <= 0) {
+      const dx2 = p.x - rc.px;
+      const dy2 = p.y - rc.py + 6;
+      if (dx2 * dx2 + dy2 * dy2 < (p.r + 12) * (p.r + 12)) {
+        lives--;
+        sfx.hurt();
+        rc.invincible = 90;
+        p.y = rc.py + 9999; // remove
+        if (lives <= 0) {
+          state = STATE.GAME_OVER;
+          levelTransitionTimer = 120;
+          sfx.gameOver();
+          return;
+        }
+      }
+    }
+  }
+  rc.projectiles = rc.projectiles.filter(p => p.y < rc.py + 500);
+  if (rc.invincible > 0) rc.invincible--;
+  // Camera follows player
+  rc.cameraY = rc.py - H / 2;
+  // Reach Eleanor
+  if (rc.py <= rc.eleanorY + 50) {
+    rc.rescued = true;
+    rc.rescuedTimer = 90;
+    sfx.bigWin();
+  }
+  updateHUD();
+}
+
+function drawRopeClimb() {
+  const rc = ropeClimb;
+  // Sky-to-dark gradient
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#1a0820');
+  g.addColorStop(0.5, '#3a1830');
+  g.addColorStop(1, '#5a2840');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Stars
+  ctx.fillStyle = 'white';
+  for (let i = 0; i < 30; i++) {
+    const sx = (i * 97) % W;
+    const sy = (i * 53 + Math.floor(rc.cameraY * 0.05)) % (H / 2);
+    ctx.fillRect(sx, Math.abs(sy), 1.5, 1.5);
+  }
+  // Moon
+  ctx.fillStyle = '#FFF5C8';
+  ctx.beginPath();
+  ctx.arc(W - 100, 80, 30, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Castle walls scrolling with camera
+  ctx.save();
+  ctx.translate(0, -rc.cameraY);
+  // Left tower
+  ctx.fillStyle = '#8A8898';
+  ctx.fillRect(0, -200, 100, 2000);
+  ctx.fillStyle = '#6A6878';
+  for (let yy = -200; yy < 1800; yy += 24) {
+    const off = (Math.floor(yy / 24) % 2) * 18;
+    for (let xx = off; xx < 100; xx += 36) {
+      ctx.fillRect(xx, yy, 32, 20);
+    }
+  }
+  // Right tower
+  ctx.fillStyle = '#8A8898';
+  ctx.fillRect(W - 100, -200, 100, 2000);
+  ctx.fillStyle = '#6A6878';
+  for (let yy = -200; yy < 1800; yy += 24) {
+    const off = (Math.floor(yy / 24) % 2) * 18;
+    for (let xx = off; xx < 100; xx += 36) {
+      ctx.fillRect(W - 100 + xx, yy, 32, 20);
+    }
+  }
+  // Windows with lit candles, scattered up the towers
+  for (let yy = 200; yy < 1500; yy += 250) {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(30, yy, 18, 26);
+    ctx.fillRect(W - 48, yy, 18, 26);
+    ctx.fillStyle = '#FFD060';
+    ctx.fillRect(34, yy + 4, 10, 18);
+    ctx.fillRect(W - 44, yy + 4, 10, 18);
+  }
+
+  // Rope from off-screen anchor at top, down to player hands
+  ctx.strokeStyle = '#A56020';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(rc.px, -300);
+  ctx.lineTo(rc.px, rc.py - 12);
+  ctx.stroke();
+  // Knot at bottom of rope
+  ctx.fillStyle = '#7A4014';
+  ctx.beginPath();
+  ctx.arc(rc.px, rc.py - 12, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Projectiles
+  for (const p of rc.projectiles) {
+    if (p.type === 'bomb') {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      // Shine
+      ctx.fillStyle = '#444';
+      ctx.beginPath(); ctx.arc(p.x - 4, p.y - 4, 3, 0, Math.PI * 2); ctx.fill();
+      // Fuse
+      ctx.strokeStyle = '#A0522D';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - 13);
+      ctx.quadraticCurveTo(p.x + 4, p.y - 18, p.x + 6, p.y - 22);
+      ctx.stroke();
+      // Spark
+      ctx.fillStyle = '#FFFF60';
+      ctx.beginPath(); ctx.arc(p.x + 6, p.y - 22, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFA500';
+      ctx.beginPath(); ctx.arc(p.x + 6, p.y - 22, 1.5, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Knife
+      ctx.fillStyle = '#CCC';
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + 14);
+      ctx.lineTo(p.x - 4, p.y - 4);
+      ctx.lineTo(p.x + 4, p.y - 4);
+      ctx.closePath();
+      ctx.fill();
+      // Hilt
+      ctx.fillStyle = '#5C2C0C';
+      ctx.fillRect(p.x - 5, p.y - 8, 10, 4);
+      // Highlight
+      ctx.fillStyle = '#EEE';
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + 13);
+      ctx.lineTo(p.x - 1, p.y - 3);
+      ctx.lineTo(p.x + 1, p.y - 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Player
+  const palpha = rc.invincible > 0 && Math.floor(rc.invincible / 6) % 2 === 0 ? 0.4 : 1;
+  ctx.globalAlpha = palpha;
+  drawEvanFigure(rc.px - 14, rc.py - 18);
+  ctx.globalAlpha = 1;
+
+  // Eleanor at the top — captive
+  drawCaptiveEleanorFigure(rc.px - 16, rc.eleanorY - 30);
+  // Bars in front of her
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 3;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(rc.px + i * 7, rc.eleanorY - 36);
+    ctx.lineTo(rc.px + i * 7, rc.eleanorY + 14);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(20, 16, W - 40, 28);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Climb to Eleanor! N or SPACE = climb, B or arrows = swing', W / 2, 34);
+  ctx.textAlign = 'start';
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(W - 100, 50, 80, 24);
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Lives: ' + lives, W - 60, 67);
+  ctx.textAlign = 'start';
+  // Progress bar
+  const progress = 1 - clamp((rc.py - rc.eleanorY) / (1400 - rc.eleanorY), 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(W / 2 - 100, H - 30, 200, 16);
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(W / 2 - 98, H - 28, 196 * progress, 12);
+  // Wind indicator
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Wind: ' + (rc.wind > 0.2 ? '→' : rc.wind < -0.2 ? '←' : '·'), W / 2, H - 40);
+  ctx.textAlign = 'start';
+  if (rc.rescued) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, H / 2 - 30, W, 60);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Eleanor is saved!', W / 2, H / 2 + 12);
+    ctx.textAlign = 'start';
+  }
+}
+
+// =========================================================
+// DRESS-UP (Level 31)
+// =========================================================
+function startDressup() {
+  state = STATE.DRESSUP;
+  dressup = {
+    dress: 0,   // 0=tattered, 1=pink, 2=gold, 3=white
+    crown: 0,   // 0=none, 1=gold, 2=pink, 3=silver
+    hair:  0,   // 0=messy, 1=blonde, 2=brown, 3=red
+    happy: false,
+    sparkleT: 0,
+  };
+  currentLevel = 31;
+}
+
+function updateDressup() {
+  if (pressed(['escape'])) { state = STATE.LEVEL_SELECT; selectedLevel = 31; return; }
+  dressup.sparkleT += 0.06;
+  dressup.happy = dressup.dress > 0 && dressup.crown > 0 && dressup.hair > 0;
+  updateHUD();
+}
+
+function dressupHitTest(cx, cy) {
+  // Returns {kind, index} or {kind:'done'} if clicked on Done
+  const rows = [
+    { kind: 'dress', y: 280, count: 4 },
+    { kind: 'crown', y: 350, count: 4 },
+    { kind: 'hair',  y: 420, count: 4 },
+  ];
+  for (const row of rows) {
+    for (let i = 0; i < row.count; i++) {
+      const x = 180 + i * 110;
+      if (cx >= x - 28 && cx < x + 28 && cy >= row.y - 24 && cy < row.y + 28) {
+        return { kind: row.kind, index: i };
+      }
+    }
+  }
+  // Done button
+  if (cx >= W / 2 - 110 && cx < W / 2 + 110 && cy >= H - 50 && cy < H - 14) {
+    return { kind: 'done' };
+  }
+  return null;
+}
+
+function drawDressup() {
+  const du = dressup;
+  // Soft pink background with sparkles
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#FFD8E8');
+  g.addColorStop(1, '#FFE5F0');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Twinkles
+  for (let i = 0; i < 20; i++) {
+    const sx = (i * 71 + 30) % W;
+    const sy = (i * 41 + 30) % 240;
+    const a = 0.3 + 0.3 * Math.sin(du.sparkleT + i);
+    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+    ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill();
+  }
+  // Title
+  ctx.fillStyle = '#7A2A40';
+  ctx.font = 'bold 30px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Dress Up Eleanor!', W / 2, 40);
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#5A2A4A';
+  ctx.fillText('Pick a hairstyle, a crown, and a dress.', W / 2, 60);
+  // Stage pedestal
+  ctx.fillStyle = '#C46BAE';
+  ctx.beginPath();
+  ctx.ellipse(W / 2, 240, 70, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Eleanor (custom-rendered based on selections)
+  drawDressupEleanor(W / 2 - 16, 90);
+  // Item rows
+  const rows = [
+    { kind: 'dress', y: 280, label: 'Dress' },
+    { kind: 'crown', y: 350, label: 'Crown' },
+    { kind: 'hair',  y: 420, label: 'Hair'  },
+  ];
+  ctx.textAlign = 'left';
+  for (const row of rows) {
+    ctx.fillStyle = '#5A2A4A';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(row.label, 90, row.y + 5);
+    for (let i = 0; i < 4; i++) {
+      const x = 180 + i * 110;
+      // Item card background
+      const selected = du[row.kind] === i;
+      ctx.fillStyle = selected ? '#FFFFFF' : 'rgba(255,255,255,0.5)';
+      ctx.fillRect(x - 28, row.y - 24, 56, 52);
+      if (selected) {
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x - 28, row.y - 24, 56, 52);
+      }
+      // Draw the item icon
+      if (row.kind === 'dress') drawDressIcon(x, row.y, i);
+      else if (row.kind === 'crown') drawCrownIcon(x, row.y, i);
+      else if (row.kind === 'hair')  drawHairIcon(x, row.y, i);
+    }
+  }
+  // Done button
+  ctx.fillStyle = du.happy ? '#FFD700' : '#aaa';
+  ctx.fillRect(W / 2 - 110, H - 50, 220, 36);
+  ctx.fillStyle = du.happy ? '#5a2080' : '#666';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(du.happy ? 'Save Eleanor & Finish! ✨' : 'Pick all three first!', W / 2, H - 26);
+  ctx.textAlign = 'start';
+}
+
+function drawDressupEleanor(sx, sy) {
+  const du = dressup;
+  const cx = sx + 16;
+  // Hair color by selection
+  const hairColors = ['#8B7355', '#E5C16A', '#5C3A1A', '#B04030'];
+  const hc = hairColors[du.hair];
+  // Long hair
+  ctx.fillStyle = hc;
+  ctx.beginPath();
+  ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Head
+  ctx.fillStyle = '#FFDBAC';
+  ctx.beginPath(); ctx.arc(cx, sy + 14, 9, 0, Math.PI * 2); ctx.fill();
+  // Bangs
+  ctx.fillStyle = hc;
+  if (du.hair === 0) {
+    // Messy
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, sy + 10);
+    ctx.lineTo(cx - 5, sy + 5);
+    ctx.lineTo(cx - 2, sy + 12);
+    ctx.lineTo(cx + 1, sy + 4);
+    ctx.lineTo(cx + 4, sy + 11);
+    ctx.lineTo(cx + 8, sy + 6);
+    ctx.lineTo(cx + 9, sy + 13);
+    ctx.quadraticCurveTo(cx, sy + 16, cx - 9, sy + 10);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, sy + 9);
+    ctx.quadraticCurveTo(cx, sy + 3, cx + 9, sy + 7);
+    ctx.quadraticCurveTo(cx + 2, sy + 14, cx - 9, sy + 9);
+    ctx.fill();
+  }
+  // Crown
+  if (du.crown > 0) {
+    const cColors = [null, '#FFD700', '#FF99CC', '#C8C8D8'];
+    ctx.fillStyle = cColors[du.crown];
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, sy + 3);
+    ctx.lineTo(cx - 5, sy - 4);
+    ctx.lineTo(cx - 2, sy + 3);
+    ctx.lineTo(cx, sy - 6);
+    ctx.lineTo(cx + 2, sy + 3);
+    ctx.lineTo(cx + 5, sy - 4);
+    ctx.lineTo(cx + 8, sy + 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(cx - 8, sy + 3, 16, 2.5);
+    ctx.fillStyle = '#E04A95';
+    ctx.beginPath(); ctx.arc(cx, sy + 4, 1.2, 0, Math.PI * 2); ctx.fill();
+  }
+  // Face: happy if anything is on, sad if all 0 (start state)
+  const happy = du.dress > 0 || du.crown > 0 || du.hair > 0;
+  // Eyes
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(cx - 3.2, sy + 14, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.2, sy + 14, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3A7050';
+  ctx.beginPath(); ctx.arc(cx - 2.9, sy + 14.3, 1.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3.5, sy + 14.3, 1.3, 0, Math.PI * 2); ctx.fill();
+  // Cheeks
+  ctx.fillStyle = 'rgba(255,140,170,0.6)';
+  ctx.beginPath(); ctx.arc(cx - 6, sy + 17, 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 6, sy + 17, 1.8, 0, Math.PI * 2); ctx.fill();
+  // Mouth: smile or frown
+  ctx.strokeStyle = '#7A2A40';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  if (happy) ctx.arc(cx, sy + 18, 2.5, 0.15 * Math.PI, 0.85 * Math.PI);
+  else ctx.arc(cx, sy + 22, 2.5, Math.PI * 1.15, Math.PI * 1.85, true);
+  ctx.stroke();
+  // Dress
+  const dressColors = ['#6A5A4A', '#FF69B4', '#FFD700', '#FFFFFF'];
+  ctx.fillStyle = dressColors[du.dress];
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, sy + 24);
+  ctx.lineTo(cx + 8, sy + 24);
+  ctx.quadraticCurveTo(cx + 16, sy + 36, cx + 16, sy + 42);
+  if (du.dress === 0) {
+    // Tattered hem
+    ctx.lineTo(cx + 13, sy + 46);
+    ctx.lineTo(cx + 9, sy + 41);
+    ctx.lineTo(cx + 4, sy + 46);
+    ctx.lineTo(cx, sy + 41);
+    ctx.lineTo(cx - 4, sy + 46);
+    ctx.lineTo(cx - 9, sy + 41);
+    ctx.lineTo(cx - 13, sy + 46);
+    ctx.lineTo(cx - 16, sy + 42);
+  } else {
+    ctx.lineTo(cx - 16, sy + 42);
+  }
+  ctx.quadraticCurveTo(cx - 16, sy + 36, cx - 8, sy + 24);
+  ctx.closePath();
+  ctx.fill();
+  // Sash on fancy dresses
+  if (du.dress >= 2) {
+    ctx.fillStyle = du.dress === 2 ? '#E04A95' : '#FFD700';
+    ctx.fillRect(cx - 14, sy + 32, 28, 3);
+  }
+  // Arms
+  ctx.fillStyle = '#FFDBAC';
+  ctx.beginPath(); ctx.ellipse(cx - 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawDressIcon(x, y, i) {
+  const colors = ['#6A5A4A', '#FF69B4', '#FFD700', '#FFFFFF'];
+  ctx.fillStyle = colors[i];
+  ctx.beginPath();
+  ctx.moveTo(x - 12, y - 10);
+  ctx.lineTo(x + 12, y - 10);
+  ctx.lineTo(x + 18, y + 18);
+  ctx.lineTo(x - 18, y + 18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawCrownIcon(x, y, i) {
+  if (i === 0) {
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y + 4, 14, 0, Math.PI * 2);
+    ctx.moveTo(x - 10, y + 14); ctx.lineTo(x + 10, y - 6);
+    ctx.stroke();
+    return;
+  }
+  const colors = [null, '#FFD700', '#FF99CC', '#C8C8D8'];
+  ctx.fillStyle = colors[i];
+  ctx.beginPath();
+  ctx.moveTo(x - 14, y + 6);
+  ctx.lineTo(x - 9, y - 8);
+  ctx.lineTo(x - 4, y + 6);
+  ctx.lineTo(x, y - 12);
+  ctx.lineTo(x + 4, y + 6);
+  ctx.lineTo(x + 9, y - 8);
+  ctx.lineTo(x + 14, y + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(x - 14, y + 6, 28, 4);
+  ctx.fillStyle = '#E04A95';
+  ctx.beginPath(); ctx.arc(x, y + 8, 1.6, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawHairIcon(x, y, i) {
+  const colors = ['#8B7355', '#E5C16A', '#5C3A1A', '#B04030'];
+  ctx.fillStyle = colors[i];
+  ctx.beginPath();
+  ctx.ellipse(x, y + 6, 14, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#FFDBAC';
+  ctx.beginPath(); ctx.arc(x, y - 2, 8, 0, Math.PI * 2); ctx.fill();
+  if (i === 0) {
+    // Messy strokes
+    ctx.strokeStyle = colors[i];
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y - 4); ctx.lineTo(x - 7, y - 9);
+    ctx.moveTo(x - 2, y - 8); ctx.lineTo(x + 1, y - 12);
+    ctx.moveTo(x + 6, y - 6); ctx.lineTo(x + 9, y - 10);
+    ctx.stroke();
+  }
 }
 
 // =========================================================
