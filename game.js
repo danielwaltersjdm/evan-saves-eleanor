@@ -364,7 +364,7 @@ function handleCanvasClick(cx, cy) {
     const hit = dressupHitTest(cx, cy);
     if (!hit) return;
     if (hit.kind === 'done') {
-      if (dressup.happy) {
+      if (dressupReady()) {
         save.cleared[31] = true;
         if (31 > save.highestUnlocked) save.highestUnlocked = 31;
         saveProgress();
@@ -374,6 +374,11 @@ function handleCanvasClick(cx, cy) {
       } else {
         sfx.hurt();
       }
+      return;
+    }
+    if (hit.kind === 'tab') {
+      dressup.activeTab = hit.index;
+      sfx.select();
       return;
     }
     dressup[hit.kind] = hit.index;
@@ -3116,44 +3121,84 @@ function drawRopeClimb() {
 }
 
 // =========================================================
-// DRESS-UP (Level 31)
+// DRESS-UP (Level 31) — full salon
 // =========================================================
+
+const HAIR_COLORS = ['#8B7355', '#E5C16A', '#5C3A1A', '#1A1A1A', '#B04030', '#FF80C0', '#9040C0'];
+const DRESS_COLORS = ['#6A5A4A', '#FF69B4', '#FFD700', '#9040C0', '#4080C0', '#40A040', '#FFFFFF'];
+const SHOE_COLORS = ['#FFD700', '#FF80C0', '#C8C8D8', '#C04040', '#1A1A1A', '#FFFFFF'];
+const EYESHADOW_COLORS = [null, '#FF80C0', '#4080C0', '#9040C0', '#40A040', '#FFD700'];
+const LIPSTICK_COLORS = [null, '#FF80C0', '#C04040', '#FF8060', '#9040C0'];
+const NAIL_COLORS = [null, '#FF80C0', '#C04040', '#9040C0', '#4080C0', '#FFD700'];
+const CROWN_COLORS = [null, '#FFD700', '#FF99CC', '#C8C8D8', '#80E040'];
+
+const TABS = ['Hair', 'Crown', 'Dress', 'Shoes', 'Makeup'];
+const TAB_OPTIONS = [
+  [{ key: 'hairstyle', label: 'Style', count: 6 },
+   { key: 'hairColor', label: 'Color', count: 7 }],
+  [{ key: 'crown',     label: 'Crown', count: 5 }],
+  [{ key: 'dressColor',   label: 'Color',   count: 7 },
+   { key: 'dressPattern', label: 'Pattern', count: 6 }],
+  [{ key: 'shoes',      label: 'Style', count: 5 },
+   { key: 'shoesColor', label: 'Color', count: 6 }],
+  [{ key: 'eyeshadow', label: 'Eyeshadow', count: 6 },
+   { key: 'blush',     label: 'Blush',     count: 3 },
+   { key: 'lipstick',  label: 'Lipstick',  count: 5 },
+   { key: 'nails',     label: 'Nails',     count: 6 }],
+];
+
 function startDressup() {
   state = STATE.DRESSUP;
   dressup = {
-    dress: 0,   // 0=tattered, 1=pink, 2=gold, 3=white
-    crown: 0,   // 0=none, 1=gold, 2=pink, 3=silver
-    hair:  0,   // 0=messy, 1=blonde, 2=brown, 3=red
-    happy: false,
+    hairstyle: 0, hairColor: 0,
+    crown: 0,
+    dressColor: 0, dressPattern: 0,
+    shoes: 0, shoesColor: 0,
+    eyeshadow: 0, blush: 0, lipstick: 0, nails: 0,
+    activeTab: 0,
     sparkleT: 0,
   };
   currentLevel = 31;
 }
 
+function dressupReady() {
+  return dressup.dressColor > 0 && dressup.hairstyle > 0 && dressup.shoes > 0;
+}
+
 function updateDressup() {
   if (pressed(['escape'])) { state = STATE.LEVEL_SELECT; selectedLevel = 31; return; }
   dressup.sparkleT += 0.06;
-  dressup.happy = dressup.dress > 0 && dressup.crown > 0 && dressup.hair > 0;
   updateHUD();
 }
 
 function dressupHitTest(cx, cy) {
-  // Returns {kind, index} or {kind:'done'} if clicked on Done
-  const rows = [
-    { kind: 'dress', y: 280, count: 4 },
-    { kind: 'crown', y: 350, count: 4 },
-    { kind: 'hair',  y: 420, count: 4 },
-  ];
-  for (const row of rows) {
-    for (let i = 0; i < row.count; i++) {
-      const x = 180 + i * 110;
-      if (cx >= x - 28 && cx < x + 28 && cy >= row.y - 24 && cy < row.y + 28) {
-        return { kind: row.kind, index: i };
+  // Tabs
+  const tabsY = 70, tabW = 140, tabsStartX = 50;
+  if (cy >= tabsY && cy < tabsY + 32) {
+    for (let i = 0; i < TABS.length; i++) {
+      const tx = tabsStartX + i * tabW;
+      if (cx >= tx && cx < tx + tabW - 10) return { kind: 'tab', index: i };
+    }
+  }
+  // Tab content rows
+  const tab = TAB_OPTIONS[dressup.activeTab];
+  const startY = 135;
+  const rowH = 68;
+  for (let r = 0; r < tab.length; r++) {
+    const row = tab[r];
+    const rowY = startY + r * rowH;
+    const iconCount = row.count;
+    const startX = 360;
+    const spacing = 56;
+    for (let i = 0; i < iconCount; i++) {
+      const ix = startX + i * spacing;
+      if (cx >= ix - 22 && cx < ix + 22 && cy >= rowY - 22 && cy < rowY + 24) {
+        return { kind: row.key, index: i };
       }
     }
   }
   // Done button
-  if (cx >= W / 2 - 110 && cx < W / 2 + 110 && cy >= H - 50 && cy < H - 14) {
+  if (cx >= W / 2 - 130 && cx < W / 2 + 130 && cy >= H - 42 && cy < H - 10) {
     return { kind: 'done' };
   }
   return null;
@@ -3161,90 +3206,442 @@ function dressupHitTest(cx, cy) {
 
 function drawDressup() {
   const du = dressup;
-  // Soft pink background with sparkles
+  // Background
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#FFD8E8');
   g.addColorStop(1, '#FFE5F0');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   // Twinkles
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 30; i++) {
     const sx = (i * 71 + 30) % W;
-    const sy = (i * 41 + 30) % 240;
-    const a = 0.3 + 0.3 * Math.sin(du.sparkleT + i);
+    const sy = (i * 41 + 30) % H;
+    const a = 0.2 + 0.35 * Math.sin(du.sparkleT + i);
     ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
     ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill();
   }
   // Title
   ctx.fillStyle = '#7A2A40';
-  ctx.font = 'bold 30px sans-serif';
+  ctx.font = 'bold 24px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Dress Up Eleanor!', W / 2, 40);
-  ctx.font = '14px sans-serif';
-  ctx.fillStyle = '#5A2A4A';
-  ctx.fillText('Pick a hairstyle, a crown, and a dress.', W / 2, 60);
-  // Stage pedestal
+  ctx.fillText('Dress Up Eleanor!', W / 2, 36);
+
+  // Tabs
+  const tabsY = 70, tabW = 140;
+  for (let i = 0; i < TABS.length; i++) {
+    const tx = 50 + i * tabW;
+    const active = du.activeTab === i;
+    ctx.fillStyle = active ? '#FFD700' : 'rgba(255,255,255,0.65)';
+    ctx.fillRect(tx, tabsY, tabW - 10, 32);
+    if (active) {
+      ctx.strokeStyle = '#7A2A40';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tx, tabsY, tabW - 10, 32);
+    }
+    ctx.fillStyle = '#7A2A40';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(TABS[i], tx + (tabW - 10) / 2, tabsY + 22);
+  }
+
+  // Eleanor preview (left side, scaled 3x)
   ctx.fillStyle = '#C46BAE';
   ctx.beginPath();
-  ctx.ellipse(W / 2, 240, 70, 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(170, 430, 80, 12, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Eleanor (custom-rendered based on selections)
-  drawDressupEleanor(W / 2 - 16, 90);
-  // Item rows
-  const rows = [
-    { kind: 'dress', y: 280, label: 'Dress' },
-    { kind: 'crown', y: 350, label: 'Crown' },
-    { kind: 'hair',  y: 420, label: 'Hair'  },
-  ];
-  ctx.textAlign = 'left';
-  for (const row of rows) {
+  ctx.save();
+  ctx.translate(170, 290);
+  ctx.scale(3, 3);
+  drawDressupEleanor(-16, -36);
+  ctx.restore();
+
+  // Tab options on the right
+  const tab = TAB_OPTIONS[du.activeTab];
+  const startY = 135;
+  const rowH = 68;
+  for (let r = 0; r < tab.length; r++) {
+    const row = tab[r];
+    const rowY = startY + r * rowH;
     ctx.fillStyle = '#5A2A4A';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText(row.label, 90, row.y + 5);
-    for (let i = 0; i < 4; i++) {
-      const x = 180 + i * 110;
-      // Item card background
-      const selected = du[row.kind] === i;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 310, rowY + 4);
+    const startX = 360;
+    const spacing = 56;
+    for (let i = 0; i < row.count; i++) {
+      const ix = startX + i * spacing;
+      const selected = du[row.key] === i;
       ctx.fillStyle = selected ? '#FFFFFF' : 'rgba(255,255,255,0.5)';
-      ctx.fillRect(x - 28, row.y - 24, 56, 52);
+      ctx.fillRect(ix - 22, rowY - 22, 44, 46);
       if (selected) {
         ctx.strokeStyle = '#FFD700';
         ctx.lineWidth = 3;
-        ctx.strokeRect(x - 28, row.y - 24, 56, 52);
+        ctx.strokeRect(ix - 22, rowY - 22, 44, 46);
       }
-      // Draw the item icon
-      if (row.kind === 'dress') drawDressIcon(x, row.y, i);
-      else if (row.kind === 'crown') drawCrownIcon(x, row.y, i);
-      else if (row.kind === 'hair')  drawHairIcon(x, row.y, i);
+      drawOptionIcon(row.key, i, ix, rowY + 2);
     }
   }
+
   // Done button
-  ctx.fillStyle = du.happy ? '#FFD700' : '#aaa';
-  ctx.fillRect(W / 2 - 110, H - 50, 220, 36);
-  ctx.fillStyle = du.happy ? '#5a2080' : '#666';
-  ctx.font = 'bold 18px sans-serif';
+  const ready = dressupReady();
+  ctx.fillStyle = ready ? '#FFD700' : '#bbb';
+  ctx.fillRect(W / 2 - 130, H - 42, 260, 32);
+  ctx.fillStyle = ready ? '#5a2080' : '#666';
+  ctx.font = 'bold 16px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(du.happy ? 'Save Eleanor & Finish! ✨' : 'Pick all three first!', W / 2, H - 26);
+  ctx.fillText(ready ? 'Save Eleanor & Finish! ✨' : 'Pick hair, dress & shoes first!', W / 2, H - 21);
   ctx.textAlign = 'start';
+}
+
+function drawOptionIcon(key, i, x, y) {
+  if      (key === 'hairstyle')    drawHairstyleIcon(x, y, i);
+  else if (key === 'hairColor')    drawColorChip(x, y, HAIR_COLORS[i]);
+  else if (key === 'crown')        drawCrownChip(x, y, i);
+  else if (key === 'dressColor')   drawColorChip(x, y, DRESS_COLORS[i]);
+  else if (key === 'dressPattern') drawPatternChip(x, y, i);
+  else if (key === 'shoes')        drawShoeChip(x, y, i);
+  else if (key === 'shoesColor')   drawColorChip(x, y, SHOE_COLORS[i]);
+  else if (key === 'eyeshadow')    drawColorChip(x, y, EYESHADOW_COLORS[i]);
+  else if (key === 'blush')        drawBlushChip(x, y, i);
+  else if (key === 'lipstick')     drawColorChip(x, y, LIPSTICK_COLORS[i]);
+  else if (key === 'nails')        drawColorChip(x, y, NAIL_COLORS[i]);
+}
+
+function drawNoneChip(x, y) {
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y + 6, 13, 0, Math.PI * 2);
+  ctx.moveTo(x - 9, y - 3); ctx.lineTo(x + 9, y + 15);
+  ctx.stroke();
+}
+
+function drawColorChip(x, y, color) {
+  if (!color) return drawNoneChip(x, y);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y + 6, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function drawCrownChip(x, y, i) {
+  if (i === 0) return drawNoneChip(x, y);
+  ctx.fillStyle = CROWN_COLORS[i];
+  ctx.beginPath();
+  ctx.moveTo(x - 14, y + 10);
+  ctx.lineTo(x - 9, y - 5);
+  ctx.lineTo(x - 4, y + 10);
+  ctx.lineTo(x, y - 9);
+  ctx.lineTo(x + 4, y + 10);
+  ctx.lineTo(x + 9, y - 5);
+  ctx.lineTo(x + 14, y + 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(x - 14, y + 10, 28, 4);
+  ctx.fillStyle = '#E04A95';
+  ctx.beginPath(); ctx.arc(x, y + 12, 1.6, 0, Math.PI * 2); ctx.fill();
+  if (i === 4) {
+    // Flower crown - little flowers
+    for (let j = 0; j < 3; j++) {
+      const fx = x - 7 + j * 7;
+      ctx.fillStyle = '#FF80C0';
+      ctx.beginPath(); ctx.arc(fx, y - 1, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath(); ctx.arc(fx, y - 1, 0.8, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function drawHairstyleIcon(x, y, i) {
+  const cx = x, cy = y + 4;
+  const hc = '#5C3A1A';
+  if (i === 0) {
+    // Messy
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy + 2);
+    ctx.lineTo(cx - 5, cy - 5);
+    ctx.lineTo(cx - 2, cy + 3);
+    ctx.lineTo(cx + 1, cy - 6);
+    ctx.lineTo(cx + 4, cy + 3);
+    ctx.lineTo(cx + 7, cy - 4);
+    ctx.lineTo(cx + 8, cy + 3);
+    ctx.quadraticCurveTo(cx, cy + 6, cx - 8, cy + 2);
+    ctx.fill();
+  } else if (i === 1) {
+    // Down straight
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 6, 10, 13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy);
+    ctx.quadraticCurveTo(cx, cy - 6, cx + 8, cy);
+    ctx.quadraticCurveTo(cx, cy + 5, cx - 8, cy);
+    ctx.fill();
+  } else if (i === 2) {
+    // Ponytail
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx, cy, 8, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.ellipse(cx + 9, cy + 7, 3, 9, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FF80C0';
+    ctx.beginPath(); ctx.arc(cx + 7, cy + 1, 1.5, 0, Math.PI * 2); ctx.fill();
+  } else if (i === 3) {
+    // Side braid
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hc;
+    for (let j = 0; j < 5; j++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + 9, cy + 1 + j * 3, 2.5, 1.8, 0.3 + j * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (i === 4) {
+    // French braid
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 4, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3A1A0A';
+    for (let j = 0; j < 6; j++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + (j % 2 ? -1.5 : 1.5), cy - 5 + j * 3, 3, 1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (i === 5) {
+    // Buns
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 1, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFDBAC';
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx - 5, cy - 7, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 5, cy - 7, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawPatternChip(x, y, i) {
+  // Show as a square swatch with pattern
+  ctx.fillStyle = '#FFE5F0';
+  ctx.fillRect(x - 14, y - 8, 28, 22);
+  if (i === 0) {
+    ctx.fillStyle = '#7A2A40';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('plain', x, y + 5);
+    ctx.textAlign = 'start';
+    return;
+  }
+  ctx.fillStyle = '#7A2A40';
+  if (i === 1) {
+    for (let dx = -10; dx <= 10; dx += 5) for (let dy = -5; dy <= 11; dy += 5) {
+      ctx.beginPath(); ctx.arc(x + dx, y + dy, 1.4, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (i === 2) {
+    for (let dy = -6; dy <= 12; dy += 4) ctx.fillRect(x - 12, y + dy, 24, 1.4);
+  } else if (i === 3) {
+    for (let j = 0; j < 4; j++) {
+      const hx = x - 8 + (j % 2 === 0 ? 0 : 8);
+      const hy = y - 4 + Math.floor(j / 2) * 8;
+      ctx.beginPath();
+      ctx.arc(hx - 1.5, hy, 1.4, 0, Math.PI * 2);
+      ctx.arc(hx + 1.5, hy, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(hx - 3, hy);
+      ctx.lineTo(hx, hy + 3);
+      ctx.lineTo(hx + 3, hy);
+      ctx.fill();
+    }
+  } else if (i === 4) {
+    ctx.fillStyle = '#FFD700';
+    for (let j = 0; j < 4; j++) {
+      const sx = x - 6 + (j % 2) * 12;
+      const sy = y - 4 + Math.floor(j / 2) * 8;
+      drawStar(sx, sy, 3);
+    }
+  } else if (i === 5) {
+    for (let j = 0; j < 3; j++) {
+      const fx = x - 8 + j * 8;
+      const fy = y + (j === 1 ? -3 : 6);
+      ctx.fillStyle = '#FF80C0';
+      for (let k = 0; k < 5; k++) {
+        const a = k * Math.PI / 2.5;
+        ctx.beginPath();
+        ctx.arc(fx + Math.cos(a) * 1.6, fy + Math.sin(a) * 1.6, 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath(); ctx.arc(fx, fy, 1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function drawStar(x, y, r) {
+  ctx.beginPath();
+  for (let k = 0; k < 5; k++) {
+    const a1 = -Math.PI / 2 + k * Math.PI * 2 / 5;
+    const a2 = a1 + Math.PI / 5;
+    if (k === 0) ctx.moveTo(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+    else ctx.lineTo(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+    ctx.lineTo(x + Math.cos(a2) * r * 0.4, y + Math.sin(a2) * r * 0.4);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawShoeChip(x, y, i) {
+  if (i === 0) return drawNoneChip(x, y);
+  ctx.fillStyle = '#FFD700';
+  if (i === 1) {
+    // Slippers
+    ctx.beginPath(); ctx.ellipse(x, y + 8, 13, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FF80C0';
+    ctx.beginPath(); ctx.arc(x, y + 5, 2, 0, Math.PI * 2); ctx.fill();
+  } else if (i === 2) {
+    // Heels
+    ctx.beginPath();
+    ctx.moveTo(x - 11, y + 10);
+    ctx.lineTo(x + 12, y + 5);
+    ctx.lineTo(x + 14, y + 10);
+    ctx.lineTo(x + 14, y + 12);
+    ctx.lineTo(x - 11, y + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(x - 10, y + 12, 2, 6);
+  } else if (i === 3) {
+    // Boots
+    ctx.fillRect(x - 7, y - 8, 14, 16);
+    ctx.fillRect(x - 9, y + 8, 18, 5);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(x - 7, y - 8, 14, 3);
+  } else if (i === 4) {
+    // Sandals
+    ctx.beginPath(); ctx.ellipse(x, y + 10, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#A56020';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y + 8); ctx.lineTo(x - 4, y);
+    ctx.moveTo(x + 8, y + 8); ctx.lineTo(x + 4, y);
+    ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y);
+    ctx.stroke();
+  }
+}
+
+function drawBlushChip(x, y, i) {
+  ctx.fillStyle = '#FFDBAC';
+  ctx.beginPath();
+  ctx.arc(x, y + 5, 12, 0, Math.PI * 2);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle = 'black';
+  ctx.fillRect(x - 4, y + 3, 1.2, 1.2);
+  ctx.fillRect(x + 3, y + 3, 1.2, 1.2);
+  if (i > 0) {
+    const alpha = i === 1 ? 0.45 : 0.85;
+    ctx.fillStyle = 'rgba(255,140,170,' + alpha + ')';
+    ctx.beginPath(); ctx.arc(x - 5, y + 7, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 5, y + 7, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 function drawDressupEleanor(sx, sy) {
   const du = dressup;
   const cx = sx + 16;
-  // Hair color by selection
-  const hairColors = ['#8B7355', '#E5C16A', '#5C3A1A', '#B04030'];
-  const hc = hairColors[du.hair];
-  // Long hair
+  const hc = HAIR_COLORS[du.hairColor];
+
+  // BACK HAIR by style
   ctx.fillStyle = hc;
-  ctx.beginPath();
-  ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Head
-  ctx.fillStyle = '#FFDBAC';
+  if (du.hairstyle === 0) {
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 22, 13, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (du.hairstyle === 1) {
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 28, 16, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - 13, sy + 28, 4, 11, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 13, sy + 28, 4, 11, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (du.hairstyle === 2) {
+    // Ponytail
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - 7, sy + 28, 4, 16, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    // Tie
+    ctx.fillStyle = '#FF80C0';
+    ctx.beginPath();
+    ctx.ellipse(cx - 4, sy + 15, 2.5, 1.5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hc;
+  } else if (du.hairstyle === 3) {
+    // Side braid
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // braid down right side
+    for (let j = 0; j < 8; j++) {
+      const t = j;
+      ctx.beginPath();
+      ctx.ellipse(cx + 12 - t * 0.3, sy + 18 + t * 4, 3.5, 2.5, 0.2 + t * 0.04, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#FF80C0';
+    ctx.beginPath();
+    ctx.ellipse(cx + 9, sy + 51, 2.5, 1.5, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hc;
+  } else if (du.hairstyle === 4) {
+    // French braid
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = (du.hairColor === 3 ? '#333' : '#3A1A0A');
+    for (let j = 0; j < 11; j++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + (j % 2 ? -2 : 2), sy + 4 + j * 3.5, 3.5, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#FF80C0';
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 43, 3, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hc;
+  } else if (du.hairstyle === 5) {
+    // Two buns
+    ctx.beginPath();
+    ctx.ellipse(cx, sy + 16, 12, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = du.hairColor === 3 ? '#555' : '#3A1A0A';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(cx - 7, sy - 1, 3.5, 0, Math.PI * 2);
+    ctx.arc(cx + 7, sy - 1, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // HEAD
+  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
   ctx.beginPath(); ctx.arc(cx, sy + 14, 9, 0, Math.PI * 2); ctx.fill();
-  // Bangs
+
+  // BANGS — depends on style
   ctx.fillStyle = hc;
-  if (du.hair === 0) {
-    // Messy
+  if (du.hairstyle === 0) {
     ctx.beginPath();
     ctx.moveTo(cx - 9, sy + 10);
     ctx.lineTo(cx - 5, sy + 5);
@@ -3255,6 +3652,16 @@ function drawDressupEleanor(sx, sy) {
     ctx.lineTo(cx + 9, sy + 13);
     ctx.quadraticCurveTo(cx, sy + 16, cx - 9, sy + 10);
     ctx.fill();
+  } else if (du.hairstyle === 4) {
+    // skip (french braid covers top)
+  } else if (du.hairstyle === 5) {
+    // Center part
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, sy + 9);
+    ctx.quadraticCurveTo(cx - 3, sy + 5, cx, sy + 11);
+    ctx.quadraticCurveTo(cx + 3, sy + 5, cx + 8, sy + 9);
+    ctx.quadraticCurveTo(cx, sy + 14, cx - 8, sy + 9);
+    ctx.fill();
   } else {
     ctx.beginPath();
     ctx.moveTo(cx - 9, sy + 9);
@@ -3262,10 +3669,10 @@ function drawDressupEleanor(sx, sy) {
     ctx.quadraticCurveTo(cx + 2, sy + 14, cx - 9, sy + 9);
     ctx.fill();
   }
-  // Crown
+
+  // CROWN
   if (du.crown > 0) {
-    const cColors = [null, '#FFD700', '#FF99CC', '#C8C8D8'];
-    ctx.fillStyle = cColors[du.crown];
+    ctx.fillStyle = CROWN_COLORS[du.crown];
     ctx.beginPath();
     ctx.moveTo(cx - 8, sy + 3);
     ctx.lineTo(cx - 5, sy - 4);
@@ -3279,36 +3686,91 @@ function drawDressupEleanor(sx, sy) {
     ctx.fillRect(cx - 8, sy + 3, 16, 2.5);
     ctx.fillStyle = '#E04A95';
     ctx.beginPath(); ctx.arc(cx, sy + 4, 1.2, 0, Math.PI * 2); ctx.fill();
+    if (du.crown === 4) {
+      // Flower crown — flowers on top
+      for (let j = 0; j < 3; j++) {
+        const fx = cx - 4 + j * 4;
+        ctx.fillStyle = '#FF80C0';
+        ctx.beginPath(); ctx.arc(fx, sy - 3, 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath(); ctx.arc(fx, sy - 3, 0.6, 0, Math.PI * 2); ctx.fill();
+      }
+    }
   }
-  // Face: happy if anything is on, sad if all 0 (start state)
-  const happy = du.dress > 0 || du.crown > 0 || du.hair > 0;
-  // Eyes
+
+  // EYESHADOW (above eyes)
+  const esColor = EYESHADOW_COLORS[du.eyeshadow];
+  if (esColor) {
+    ctx.fillStyle = esColor;
+    ctx.globalAlpha = 0.65;
+    ctx.beginPath();
+    ctx.arc(cx - 3.2, sy + 12.5, 2.8, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 3.2, sy + 12.5, 2.8, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // EYES
   ctx.fillStyle = 'white';
   ctx.beginPath(); ctx.arc(cx - 3.2, sy + 14, 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(cx + 3.2, sy + 14, 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#3A7050';
   ctx.beginPath(); ctx.arc(cx - 2.9, sy + 14.3, 1.3, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(cx + 3.5, sy + 14.3, 1.3, 0, Math.PI * 2); ctx.fill();
-  // Cheeks
-  ctx.fillStyle = 'rgba(255,140,170,0.6)';
-  ctx.beginPath(); ctx.arc(cx - 6, sy + 17, 1.8, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 6, sy + 17, 1.8, 0, Math.PI * 2); ctx.fill();
-  // Mouth: smile or frown
-  ctx.strokeStyle = '#7A2A40';
-  ctx.lineWidth = 1.4;
+  ctx.fillStyle = 'white';
+  ctx.fillRect(cx - 3.3, sy + 13.5, 0.8, 0.8);
+  ctx.fillRect(cx + 3.1, sy + 13.5, 0.8, 0.8);
+  // Eyelashes
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 0.7;
   ctx.beginPath();
-  if (happy) ctx.arc(cx, sy + 18, 2.5, 0.15 * Math.PI, 0.85 * Math.PI);
-  else ctx.arc(cx, sy + 22, 2.5, Math.PI * 1.15, Math.PI * 1.85, true);
+  ctx.moveTo(cx - 5, sy + 13); ctx.lineTo(cx - 4, sy + 12);
+  ctx.moveTo(cx + 5, sy + 13); ctx.lineTo(cx + 4, sy + 12);
   ctx.stroke();
-  // Dress
-  const dressColors = ['#6A5A4A', '#FF69B4', '#FFD700', '#FFFFFF'];
-  ctx.fillStyle = dressColors[du.dress];
+
+  // BLUSH
+  if (du.blush > 0) {
+    const a = du.blush === 1 ? 0.45 : 0.8;
+    ctx.fillStyle = 'rgba(255,140,170,' + a + ')';
+    ctx.beginPath(); ctx.arc(cx - 6, sy + 17, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 6, sy + 17, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // MOUTH (with optional lipstick)
+  const happy = dressupReady();
+  const lipColor = LIPSTICK_COLORS[du.lipstick];
+  if (lipColor) {
+    ctx.fillStyle = lipColor;
+    if (happy) {
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, sy + 19);
+      ctx.quadraticCurveTo(cx, sy + 22, cx + 3, sy + 19);
+      ctx.quadraticCurveTo(cx, sy + 20, cx - 3, sy + 19);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, sy + 22, 2, Math.PI, 0, true);
+      ctx.fill();
+    }
+  } else {
+    ctx.strokeStyle = '#7A2A40';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    if (happy) ctx.arc(cx, sy + 19, 2.5, 0.15 * Math.PI, 0.85 * Math.PI);
+    else ctx.arc(cx, sy + 23, 2.5, Math.PI * 1.15, Math.PI * 1.85, true);
+    ctx.stroke();
+  }
+
+  // DRESS
+  const dressCol = DRESS_COLORS[du.dressColor];
+  ctx.fillStyle = dressCol;
   ctx.beginPath();
   ctx.moveTo(cx - 8, sy + 24);
   ctx.lineTo(cx + 8, sy + 24);
   ctx.quadraticCurveTo(cx + 16, sy + 36, cx + 16, sy + 42);
-  if (du.dress === 0) {
-    // Tattered hem
+  if (du.dressColor === 0) {
     ctx.lineTo(cx + 13, sy + 46);
     ctx.lineTo(cx + 9, sy + 41);
     ctx.lineTo(cx + 4, sy + 46);
@@ -3323,77 +3785,153 @@ function drawDressupEleanor(sx, sy) {
   ctx.quadraticCurveTo(cx - 16, sy + 36, cx - 8, sy + 24);
   ctx.closePath();
   ctx.fill();
-  // Sash on fancy dresses
-  if (du.dress >= 2) {
-    ctx.fillStyle = du.dress === 2 ? '#E04A95' : '#FFD700';
-    ctx.fillRect(cx - 14, sy + 32, 28, 3);
+
+  if (du.dressPattern > 0 && du.dressColor > 0) {
+    drawDressPattern(cx, sy, du.dressPattern, dressCol);
   }
-  // Arms
-  ctx.fillStyle = '#FFDBAC';
+  // V-neck
+  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
+  ctx.beginPath();
+  ctx.moveTo(cx - 3, sy + 24);
+  ctx.lineTo(cx, sy + 27);
+  ctx.lineTo(cx + 3, sy + 24);
+  ctx.closePath();
+  ctx.fill();
+  // Gold sash on bright dresses
+  if (du.dressColor >= 2) {
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(cx - 14, sy + 32, 28, 2.5);
+  }
+
+  // ARMS
+  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
   ctx.beginPath(); ctx.ellipse(cx - 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(cx + 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
-}
 
-function drawDressIcon(x, y, i) {
-  const colors = ['#6A5A4A', '#FF69B4', '#FFD700', '#FFFFFF'];
-  ctx.fillStyle = colors[i];
-  ctx.beginPath();
-  ctx.moveTo(x - 12, y - 10);
-  ctx.lineTo(x + 12, y - 10);
-  ctx.lineTo(x + 18, y + 18);
-  ctx.lineTo(x - 18, y + 18);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-}
-
-function drawCrownIcon(x, y, i) {
-  if (i === 0) {
-    ctx.strokeStyle = '#999';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y + 4, 14, 0, Math.PI * 2);
-    ctx.moveTo(x - 10, y + 14); ctx.lineTo(x + 10, y - 6);
-    ctx.stroke();
-    return;
+  // NAILS
+  const nailCol = NAIL_COLORS[du.nails];
+  if (nailCol) {
+    ctx.fillStyle = nailCol;
+    ctx.beginPath(); ctx.arc(cx - 11, sy + 33, 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 11, sy + 33, 0.9, 0, Math.PI * 2); ctx.fill();
+    if (du.nails === 5) {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(cx - 11.2, sy + 32.6, 0.4, 0.4);
+      ctx.fillRect(cx + 10.8, sy + 33.3, 0.4, 0.4);
+    }
   }
-  const colors = [null, '#FFD700', '#FF99CC', '#C8C8D8'];
-  ctx.fillStyle = colors[i];
-  ctx.beginPath();
-  ctx.moveTo(x - 14, y + 6);
-  ctx.lineTo(x - 9, y - 8);
-  ctx.lineTo(x - 4, y + 6);
-  ctx.lineTo(x, y - 12);
-  ctx.lineTo(x + 4, y + 6);
-  ctx.lineTo(x + 9, y - 8);
-  ctx.lineTo(x + 14, y + 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillRect(x - 14, y + 6, 28, 4);
-  ctx.fillStyle = '#E04A95';
-  ctx.beginPath(); ctx.arc(x, y + 8, 1.6, 0, Math.PI * 2); ctx.fill();
+
+  // SHOES
+  if (du.shoes > 0) {
+    const shoeCol = SHOE_COLORS[du.shoesColor];
+    ctx.fillStyle = shoeCol;
+    if (du.shoes === 1) {
+      // Slippers
+      ctx.beginPath(); ctx.ellipse(cx - 3, sy + 43, 2.8, 1.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 3, sy + 43, 2.8, 1.3, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (du.shoes === 2) {
+      // High heels
+      ctx.beginPath();
+      ctx.moveTo(cx - 5.5, sy + 42);
+      ctx.lineTo(cx - 0.5, sy + 41);
+      ctx.lineTo(cx - 0.5, sy + 43);
+      ctx.lineTo(cx - 5.5, sy + 43);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + 0.5, sy + 41);
+      ctx.lineTo(cx + 5.5, sy + 42);
+      ctx.lineTo(cx + 5.5, sy + 43);
+      ctx.lineTo(cx + 0.5, sy + 43);
+      ctx.closePath();
+      ctx.fill();
+      // Thin heels
+      ctx.fillRect(cx - 5.2, sy + 43, 0.6, 3);
+      ctx.fillRect(cx + 4.6, sy + 43, 0.6, 3);
+    } else if (du.shoes === 3) {
+      // Tall boots
+      ctx.fillRect(cx - 5.2, sy + 34, 2.5, 10);
+      ctx.fillRect(cx + 2.7, sy + 34, 2.5, 10);
+      ctx.beginPath(); ctx.ellipse(cx - 3, sy + 44, 3, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 3, sy + 44, 3, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(cx - 5.2, sy + 34, 2.5, 2);
+      ctx.fillRect(cx + 2.7, sy + 34, 2.5, 2);
+    } else if (du.shoes === 4) {
+      // Sandals
+      ctx.beginPath(); ctx.ellipse(cx - 3, sy + 43.5, 2.7, 1.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 3, sy + 43.5, 2.7, 1.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = shoeCol;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - 4, sy + 42.5); ctx.lineTo(cx - 2, sy + 41);
+      ctx.moveTo(cx + 2, sy + 41); ctx.lineTo(cx + 4, sy + 42.5);
+      ctx.stroke();
+    }
+  }
 }
 
-function drawHairIcon(x, y, i) {
-  const colors = ['#8B7355', '#E5C16A', '#5C3A1A', '#B04030'];
-  ctx.fillStyle = colors[i];
+function drawDressPattern(cx, sy, pattern, dressColor) {
+  let pc = '#7A2A40';
+  if (dressColor === '#FF69B4') pc = '#FFD700';
+  else if (dressColor === '#FFD700') pc = '#E04A95';
+  else if (dressColor === '#9040C0') pc = '#FFD700';
+  else if (dressColor === '#4080C0') pc = '#FFFFFF';
+  else if (dressColor === '#FFFFFF') pc = '#E04A95';
+  else if (dressColor === '#40A040') pc = '#FFD700';
+
+  ctx.save();
   ctx.beginPath();
-  ctx.ellipse(x, y + 6, 14, 16, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#FFDBAC';
-  ctx.beginPath(); ctx.arc(x, y - 2, 8, 0, Math.PI * 2); ctx.fill();
-  if (i === 0) {
-    // Messy strokes
-    ctx.strokeStyle = colors[i];
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(x - 10, y - 4); ctx.lineTo(x - 7, y - 9);
-    ctx.moveTo(x - 2, y - 8); ctx.lineTo(x + 1, y - 12);
-    ctx.moveTo(x + 6, y - 6); ctx.lineTo(x + 9, y - 10);
-    ctx.stroke();
+  ctx.moveTo(cx - 8, sy + 24);
+  ctx.lineTo(cx + 8, sy + 24);
+  ctx.quadraticCurveTo(cx + 16, sy + 36, cx + 16, sy + 42);
+  ctx.lineTo(cx - 16, sy + 42);
+  ctx.quadraticCurveTo(cx - 16, sy + 36, cx - 8, sy + 24);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.fillStyle = pc;
+  if (pattern === 1) {
+    for (let dx = -16; dx <= 16; dx += 4) for (let dy = 24; dy <= 42; dy += 4) {
+      ctx.beginPath(); ctx.arc(cx + dx, sy + dy, 1, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (pattern === 2) {
+    for (let dy = 25; dy <= 42; dy += 2.5) ctx.fillRect(cx - 16, sy + dy, 32, 1);
+  } else if (pattern === 3) {
+    for (let dy = 26; dy <= 42; dy += 5) {
+      for (let dx = -12; dx <= 12; dx += 6) {
+        const hx = cx + dx + (Math.floor((dy - 26) / 5) % 2 === 0 ? 0 : 3);
+        ctx.beginPath();
+        ctx.arc(hx - 1.2, sy + dy, 1, 0, Math.PI * 2);
+        ctx.arc(hx + 1.2, sy + dy, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(hx - 2.4, sy + dy);
+        ctx.lineTo(hx, sy + dy + 2);
+        ctx.lineTo(hx + 2.4, sy + dy);
+        ctx.fill();
+      }
+    }
+  } else if (pattern === 4) {
+    for (let dy = 27; dy <= 41; dy += 5) {
+      for (let dx = -12; dx <= 12; dx += 5) {
+        drawStar(cx + dx + (Math.floor((dy - 27) / 5) % 2 ? 2 : 0), sy + dy, 1.7);
+      }
+    }
+  } else if (pattern === 5) {
+    for (let dy = 27; dy <= 41; dy += 5) {
+      for (let dx = -12; dx <= 12; dx += 5) {
+        const fx = cx + dx + (Math.floor((dy - 27) / 5) % 2 ? 2 : 0);
+        for (let k = 0; k < 5; k++) {
+          const a = k * Math.PI / 2.5;
+          ctx.beginPath();
+          ctx.arc(fx + Math.cos(a) * 1, sy + dy + Math.sin(a) * 1, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
   }
+  ctx.restore();
 }
 
 // =========================================================
