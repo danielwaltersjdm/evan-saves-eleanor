@@ -379,9 +379,14 @@ function handleCanvasClick(cx, cy) {
     if (!hit) return;
     if (hit.kind === 'done') {
       if (dressupReady()) {
+        // Ask what to name her before saving. Cancel = go back to dressing.
+        let entered = null;
+        try { entered = window.prompt("What's her name?", 'Eleanor'); } catch (e) {}
+        if (entered === null) { sfx.select(); return; }
+        const finalName = (entered.trim() || 'Eleanor');
         save.cleared[31] = true;
         if (31 > save.highestUnlocked) save.highestUnlocked = 31;
-        saveCurrentEleanorToGallery();
+        saveCurrentEleanorToGallery(finalName);
         state = STATE.FINAL_WIN;
         levelTransitionTimer = 180;
         sfx.bigWin();
@@ -3201,9 +3206,9 @@ function startDressup() {
   currentLevel = 31;
 }
 
-function saveCurrentEleanorToGallery() {
+function saveCurrentEleanorToGallery(name) {
   if (!save.savedEleanors) save.savedEleanors = [];
-  const snap = {};
+  const snap = { name: (name || 'Eleanor').slice(0, 24) };
   for (const k of ['hairstyle','hairColor','crown','crownJewel','dressColor',
     'dressPattern','shoes','shoesColor','eyeColor','eyeshadow','blush',
     'lipstick','nails','necklace','earrings','bracelet']) {
@@ -4248,12 +4253,17 @@ function drawGallery() {
       ctx.ellipse(x + cellW / 2, y + 140, 38, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       // Eleanor
-      drawSavedEleanorAt(x + cellW / 2, y + 80, slice[i]);
-      // Number
+      drawSavedEleanorAt(x + cellW / 2, y + 75, slice[i]);
+      // Name + number
+      const name = (slice[i] && slice[i].name) ? slice[i].name : 'Eleanor';
       ctx.fillStyle = '#7A2A40';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('#' + (startIdx + i + 1), x + cellW / 2, y + 160);
+      const shownName = name.length > 14 ? name.slice(0, 13) + '…' : name;
+      ctx.fillText(shownName, x + cellW / 2, y + 154);
+      ctx.fillStyle = '#A06080';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('#' + (startIdx + i + 1), x + cellW / 2, y + 168);
     }
     // Page indicator
     if (maxPage > 0) {
