@@ -6,7 +6,7 @@ const WORLDS = [
   { id: 2, name: 'Ocean',   start: 13, end: 18 },
   { id: 3, name: 'Jungle',  start: 19, end: 24 },
   { id: 4, name: 'Castle',  start: 25, end: 30 },
-  { id: 5, name: 'Dress Up', start: 31, end: 31 },
+  { id: 5, name: 'Finale', start: 31, end: 32 },
 ];
 
 function worldOf(num) {
@@ -25,7 +25,7 @@ function seededRand(seed) {
 }
 
 const LEVELS = [];
-for (let i = 1; i <= 31; i++) LEVELS.push(generateLevel(i));
+for (let i = 1; i <= 32; i++) LEVELS.push(generateLevel(i));
 
 function generateLevel(num) {
   // Level 30: rope-climb rescue (entirely a special state)
@@ -43,13 +43,25 @@ function generateLevel(num) {
   // Level 31: dress-up Eleanor finale
   if (num === 31) {
     return {
-      num: 31, world: 5, worldName: 'Dress Up', worldW: 800, theme: 5,
+      num: 31, world: 5, worldName: 'Finale', worldW: 800, theme: 5,
       platforms: [], enemies: [], powerups: [], coins: [], tubes: [], vines: [],
       spawn: { x: 60, y: 300 },
       exit: { x: 700, y: 400, w: 32, h: 38 },
       hasEleanor: true,
       challengeType: 'none',
       special: 'dressup',
+    };
+  }
+  // Level 32: maze home — Eleanor heads back to the palace
+  if (num === 32) {
+    return {
+      num: 32, world: 5, worldName: 'Finale', worldW: 800, theme: 5,
+      platforms: [], enemies: [], powerups: [], coins: [], tubes: [], vines: [],
+      spawn: { x: 60, y: 300 },
+      exit: { x: 700, y: 400, w: 32, h: 38 },
+      hasEleanor: true,
+      challengeType: 'none',
+      special: 'maze',
     };
   }
 

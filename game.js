@@ -13,7 +13,7 @@ const STARTING_LIVES = 3;
 const STATE = {
   TITLE: 0, LEVEL_SELECT: 1, PLAYING: 2, CHALLENGE: 3,
   LEVEL_WIN: 4, GAME_OVER: 5, FINAL_WIN: 6,
-  ROPE_CLIMB: 7, DRESSUP: 8, GALLERY: 9,
+  ROPE_CLIMB: 7, DRESSUP: 8, GALLERY: 9, MAZE: 10,
 };
 let state = STATE.TITLE;
 
@@ -171,6 +171,7 @@ let levelTransitionTimer = 0;
 let challenge = null;
 let ropeClimb = null;
 let dressup = null;
+let maze = null;
 
 // =========================================================
 // HELPERS
@@ -225,8 +226,9 @@ function drawParticles(useCamera = true) {
 function startLevel(num, freshLives = true) {
   currentLevel = num;
   level = LEVELS[num - 1];
-  if (level.special === 'rope') { startRopeClimb(); updateHUD(); return; }
-  if (level.special === 'dressup') { startDressup(); updateHUD(); return; }
+  if (level.special === 'rope')    { startRopeClimb(); updateHUD(); return; }
+  if (level.special === 'dressup') { startDressup();   updateHUD(); return; }
+  if (level.special === 'maze')    { startMaze();      updateHUD(); return; }
   // Clone enemies so we can reset alive states each entry
   for (const e of level.enemies) e.alive = true;
   for (const c of level.coins) c.taken = false;
@@ -320,6 +322,7 @@ function update() {
     case STATE.ROPE_CLIMB:   updateRopeClimb(); break;
     case STATE.DRESSUP:      updateDressup(); break;
     case STATE.GALLERY:      updateGallery(); break;
+    case STATE.MAZE:         updateMaze(); break;
   }
   if (messageTimer > 0) messageTimer--;
   updateParticles();
@@ -331,12 +334,13 @@ function draw() {
     case STATE.LEVEL_SELECT: drawLevelSelect(); break;
     case STATE.PLAYING:      drawPlaying(); break;
     case STATE.CHALLENGE:    drawChallenge(); break;
-    case STATE.LEVEL_WIN:    if (ropeClimb) drawRopeClimb(); else drawPlaying(); drawLevelWinOverlay(); break;
-    case STATE.GAME_OVER:    if (ropeClimb) drawRopeClimb(); else drawPlaying(); drawGameOverOverlay(); break;
+    case STATE.LEVEL_WIN:    if (ropeClimb) drawRopeClimb(); else if (maze) drawMaze(); else drawPlaying(); drawLevelWinOverlay(); break;
+    case STATE.GAME_OVER:    if (ropeClimb) drawRopeClimb(); else if (maze) drawMaze(); else drawPlaying(); drawGameOverOverlay(); break;
     case STATE.FINAL_WIN:    drawFinalWin(); break;
     case STATE.ROPE_CLIMB:   drawRopeClimb(); break;
     case STATE.DRESSUP:      drawDressup(); break;
     case STATE.GALLERY:      drawGallery(); break;
+    case STATE.MAZE:         drawMaze(); break;
   }
 }
 
@@ -354,7 +358,7 @@ function handleCanvasClick(cx, cy) {
     }
     const gridX = 80, gridY = 115;
     const cellW = 100, cellH = 55;
-    for (let i = 0; i < 31; i++) {
+    for (let i = 0; i < 32; i++) {
       const col = i % 6, row = Math.floor(i / 6);
       const x = gridX + col * cellW;
       const y = gridY + row * cellH;
@@ -379,17 +383,16 @@ function handleCanvasClick(cx, cy) {
     if (!hit) return;
     if (hit.kind === 'done') {
       if (dressupReady()) {
-        // Ask what to name her before saving. Cancel = go back to dressing.
         let entered = null;
         try { entered = window.prompt("What's her name?", 'Eleanor'); } catch (e) {}
         if (entered === null) { sfx.select(); return; }
         const finalName = (entered.trim() || 'Eleanor');
         save.cleared[31] = true;
-        if (31 > save.highestUnlocked) save.highestUnlocked = 31;
+        if (save.highestUnlocked < 32) save.highestUnlocked = 32;
         saveCurrentEleanorToGallery(finalName);
-        state = STATE.FINAL_WIN;
-        levelTransitionTimer = 180;
         sfx.bigWin();
+        // Auto-advance to level 32 (maze home)
+        startLevel(32);
       } else {
         sfx.hurt();
       }
@@ -505,9 +508,9 @@ function drawMiniEleanor(x, y) {
 // =========================================================
 function updateLevelSelect() {
   if (pressed(K_LEFT))  { selectedLevel = Math.max(1, selectedLevel - 1); sfx.select(); }
-  if (pressed(K_RIGHT)) { selectedLevel = Math.min(31, selectedLevel + 1); sfx.select(); }
+  if (pressed(K_RIGHT)) { selectedLevel = Math.min(32, selectedLevel + 1); sfx.select(); }
   if (pressed(K_UP))    { selectedLevel = Math.max(1, selectedLevel - 6); sfx.select(); }
-  if (pressed(K_DOWN))  { selectedLevel = Math.min(31, selectedLevel + 6); sfx.select(); }
+  if (pressed(K_DOWN))  { selectedLevel = Math.min(32, selectedLevel + 6); sfx.select(); }
   if (pressed(K_CONFIRM)) {
     if (selectedLevel <= save.highestUnlocked) startLevel(selectedLevel);
   }
@@ -554,7 +557,7 @@ function drawLevelSelect() {
   }
 
   ctx.textAlign = 'center';
-  for (let i = 0; i < 31; i++) {
+  for (let i = 0; i < 32; i++) {
     const col = i % 6, row = Math.floor(i / 6);
     const x = gridX + col * cellW;
     const y = gridY + row * cellH;
@@ -4580,6 +4583,435 @@ function drawSavedEleanorAt(centerX, centerY, config) {
   drawDressupEleanor(-16, -28);
   ctx.restore();
   dressup = saved;
+}
+
+// =========================================================
+// MAZE HOME (Level 32)
+// =========================================================
+const MAZE_LAYOUT = [
+  "WWWWWWWWWWWW",
+  "W..........W",
+  "W.WWWWWW.W.W",
+  "W......W.W.W",
+  "W.WWWW.W.W.W",
+  "W.W..W...W.W",
+  "W.W.WWWWW..W",
+  "W..........P",
+  "WWWWWWWWWWWW",
+];
+const MAZE_COLS = 12;
+const MAZE_ROWS = 9;
+const MAZE_TILE = 48;
+const MAZE_OX = (W - MAZE_COLS * MAZE_TILE) / 2;  // 112
+const MAZE_OY = 50;
+const MAZE_COIN_TILES = [[2,1],[5,1],[8,1],[3,3],[6,5],[7,5],[3,7],[8,7]];
+
+function mazeIsWall(px, py) {
+  const c = Math.floor((px - MAZE_OX) / MAZE_TILE);
+  const r = Math.floor((py - MAZE_OY) / MAZE_TILE);
+  if (r < 0 || r >= MAZE_ROWS || c < 0 || c >= MAZE_COLS) return true;
+  const ch = MAZE_LAYOUT[r][c];
+  return ch === 'W';
+}
+
+function mazeCollides(x, y, w, h) {
+  return mazeIsWall(x, y) || mazeIsWall(x + w - 1, y) ||
+         mazeIsWall(x, y + h - 1) || mazeIsWall(x + w - 1, y + h - 1);
+}
+
+function defaultEleanorOutfit() {
+  return {
+    hairstyle: 8, hairColor: 1, crown: 1, crownJewel: 4,
+    dressColor: 1, dressPattern: 0, shoes: 2, shoesColor: 1,
+    eyeColor: 1, eyeshadow: 1, blush: 1, lipstick: 1, nails: 1,
+    necklace: 3, earrings: 1, bracelet: 1,
+  };
+}
+
+function startMaze() {
+  state = STATE.MAZE;
+  // Eleanor wears the most recently saved outfit, or a fancy default
+  const list = save.savedEleanors || [];
+  const outfit = list.length > 0 ? list[list.length - 1] : defaultEleanorOutfit();
+  dressup = Object.assign({
+    hairstyle: 0, hairColor: 0, crown: 0, crownJewel: 0,
+    dressColor: 0, dressPattern: 0, shoes: 0, shoesColor: 0,
+    eyeColor: 0, eyeshadow: 0, blush: 0, lipstick: 0, nails: 0,
+    necklace: 0, earrings: 0, bracelet: 0,
+    activeTab: 0, sparkleT: 0,
+  }, outfit);
+
+  maze = {
+    px: MAZE_OX + MAZE_TILE + 10,
+    py: MAZE_OY + MAZE_TILE + 5,
+    pw: 28, ph: 38,
+    pvx: 0, pvy: 0,
+    facing: 1,
+    hearts: 3,
+    invincible: 60,
+    swingTimer: 0,
+    coinsCollected: 0,
+    coinsTotal: MAZE_COIN_TILES.length,
+    enemies: [
+      { x: MAZE_OX + 5.5*MAZE_TILE,  y: MAZE_OY + 1.3*MAZE_TILE, w: 28, h: 28, vx: 1.4, vy: 0,   alive: true, kind: 'shadow' },
+      { x: MAZE_OX + 1.4*MAZE_TILE,  y: MAZE_OY + 5.4*MAZE_TILE, w: 28, h: 28, vx: 0,   vy: 1.4, alive: true, kind: 'shadow' },
+      { x: MAZE_OX + 10.4*MAZE_TILE, y: MAZE_OY + 4.4*MAZE_TILE, w: 28, h: 28, vx: 0,   vy: 1.4, alive: true, kind: 'shadow' },
+      { x: MAZE_OX + 6.4*MAZE_TILE,  y: MAZE_OY + 7.4*MAZE_TILE, w: 28, h: 28, vx: 1.2, vy: 0,   alive: true, kind: 'shadow' },
+    ],
+    coins: MAZE_COIN_TILES.map(([c, r]) => ({
+      x: MAZE_OX + (c + 0.5) * MAZE_TILE,
+      y: MAZE_OY + (r + 0.5) * MAZE_TILE,
+      taken: false,
+    })),
+    palace: { x: MAZE_OX + 11.5 * MAZE_TILE, y: MAZE_OY + 7.5 * MAZE_TILE },
+    won: false,
+    wonTimer: 0,
+  };
+  particles = [];
+  currentLevel = 32;
+}
+
+function updateMaze() {
+  const m = maze;
+  if (pressed(['escape'])) { state = STATE.LEVEL_SELECT; selectedLevel = 32; return; }
+  if (m.won) {
+    m.wonTimer--;
+    if (m.wonTimer <= 0) {
+      save.cleared[32] = true;
+      saveProgress();
+      state = STATE.FINAL_WIN;
+      levelTransitionTimer = 180;
+    }
+    return;
+  }
+  // Movement
+  let dx = 0, dy = 0;
+  if (isDown(K_LEFT))  dx -= 1;
+  if (isDown(K_RIGHT)) dx += 1;
+  if (isDown(['arrowup', 'w'])) dy -= 1;
+  if (isDown(K_DOWN)) dy += 1;
+  const speed = 2.4;
+  let vx = dx * speed, vy = dy * speed;
+  if (dx !== 0 && dy !== 0) { vx *= 0.707; vy *= 0.707; }
+  if (Math.abs(dx) > 0) m.facing = dx > 0 ? 1 : -1;
+
+  // Move with collision
+  if (vx !== 0) {
+    const nx = m.px + vx;
+    if (!mazeCollides(nx + 4, m.py + 16, m.pw - 8, m.ph - 18)) m.px = nx;
+  }
+  if (vy !== 0) {
+    const ny = m.py + vy;
+    if (!mazeCollides(m.px + 4, ny + 16, m.pw - 8, m.ph - 18)) m.py = ny;
+  }
+
+  // Attack (Z, N, or Space)
+  if ((pressed(['z']) || pressed(['n']) || pressed([' '])) && m.swingTimer <= 0) {
+    m.swingTimer = 16;
+    sfx.spray();
+  }
+  if (m.swingTimer > 0) m.swingTimer--;
+
+  // Enemy movement + collision
+  const pcx = m.px + m.pw/2, pcy = m.py + m.ph/2;
+  for (const e of m.enemies) {
+    if (!e.alive) continue;
+    const nx = e.x + e.vx, ny = e.y + e.vy;
+    if (mazeCollides(nx, e.y, e.w, e.h)) e.vx = -e.vx;
+    else e.x = nx;
+    if (mazeCollides(e.x, ny, e.w, e.h)) e.vy = -e.vy;
+    else e.y = ny;
+
+    const ecx = e.x + e.w/2, ecy = e.y + e.h/2;
+    const dxe = pcx - ecx, dye = pcy - ecy;
+    const distSq = dxe*dxe + dye*dye;
+    // Swing attack reaches enemies within ~50 px of Eleanor's center
+    if (m.swingTimer > 0 && distSq < 50*50) {
+      e.alive = false;
+      sfx.defeat();
+      addParticles(e.x + e.w/2, e.y + e.h/2, 10, '#FF8080', 5);
+      continue;
+    }
+    // Direct contact damages Eleanor
+    if (distSq < 25*25 && m.invincible <= 0) {
+      m.hearts--;
+      sfx.hurt();
+      m.invincible = 90;
+      const d = Math.sqrt(distSq) || 1;
+      m.px += dxe/d * 22;
+      m.py += dye/d * 22;
+      if (m.hearts <= 0) {
+        state = STATE.GAME_OVER;
+        levelTransitionTimer = 120;
+        sfx.gameOver();
+        return;
+      }
+    }
+  }
+  if (m.invincible > 0) m.invincible--;
+
+  // Coins
+  for (const c of m.coins) {
+    if (c.taken) continue;
+    const cx = c.x - (m.px + m.pw/2);
+    const cy = c.y - (m.py + m.ph/2);
+    if (cx*cx + cy*cy < 22*22) {
+      c.taken = true;
+      m.coinsCollected++;
+      sfx.coin();
+      addParticles(c.x, c.y, 8, '#FFD700');
+    }
+  }
+
+  // Palace (only triggers once all coins are in)
+  if (m.coinsCollected >= m.coinsTotal) {
+    const dxp = m.palace.x - (m.px + m.pw/2);
+    const dyp = m.palace.y - (m.py + m.ph/2);
+    if (dxp*dxp + dyp*dyp < 36*36) {
+      m.won = true;
+      m.wonTimer = 90;
+      sfx.bigWin();
+      addParticles(m.palace.x, m.palace.y, 24, '#FFD700', 6);
+    }
+  }
+  updateHUD();
+}
+
+function drawHeart(x, y, filled) {
+  ctx.fillStyle = filled ? '#FF4070' : '#444';
+  ctx.beginPath();
+  ctx.arc(x + 5, y + 5, 5, 0, Math.PI * 2);
+  ctx.arc(x + 13, y + 5, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x, y + 6);
+  ctx.lineTo(x + 9, y + 16);
+  ctx.lineTo(x + 18, y + 6);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawMaze() {
+  const m = maze;
+  // Night sky background
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#1a0820');
+  g.addColorStop(1, '#3a1830');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Stars
+  ctx.fillStyle = 'white';
+  for (let i = 0; i < 25; i++) {
+    const sx = (i * 97) % W;
+    const sy = (i * 53) % 45;
+    ctx.fillRect(sx, sy, 1.5, 1.5);
+  }
+
+  // Maze tiles
+  for (let r = 0; r < MAZE_ROWS; r++) {
+    for (let c = 0; c < MAZE_COLS; c++) {
+      const x = MAZE_OX + c * MAZE_TILE;
+      const y = MAZE_OY + r * MAZE_TILE;
+      const ch = MAZE_LAYOUT[r][c];
+      if (ch === 'W') {
+        // Stone wall
+        ctx.fillStyle = '#5A5A78';
+        ctx.fillRect(x, y, MAZE_TILE, MAZE_TILE);
+        ctx.fillStyle = '#7A7A98';
+        ctx.fillRect(x + 2, y + 2, MAZE_TILE - 4, 4);
+        ctx.fillStyle = '#3A3A58';
+        ctx.fillRect(x, y + MAZE_TILE - 4, MAZE_TILE, 4);
+        ctx.fillRect(x + MAZE_TILE - 4, y, 4, MAZE_TILE);
+        // Tiny block lines
+        ctx.fillStyle = '#3A3A58';
+        ctx.fillRect(x + MAZE_TILE/2 - 1, y + 4, 2, MAZE_TILE - 8);
+        ctx.fillRect(x + 4, y + MAZE_TILE/2 - 1, MAZE_TILE - 8, 2);
+      } else {
+        // Carpet floor
+        ctx.fillStyle = '#C8A878';
+        ctx.fillRect(x, y, MAZE_TILE, MAZE_TILE);
+        ctx.fillStyle = '#B89868';
+        ctx.fillRect(x + MAZE_TILE/2 - 1, y, 2, MAZE_TILE);
+        ctx.fillRect(x, y + MAZE_TILE/2 - 1, MAZE_TILE, 2);
+      }
+    }
+  }
+
+  // Palace (right side)
+  const palaceUnlocked = m.coinsCollected >= m.coinsTotal;
+  const px = m.palace.x - 30;
+  const py = m.palace.y - 30;
+  // Glow if unlocked
+  if (palaceUnlocked) {
+    ctx.fillStyle = 'rgba(255,255,200,0.35)';
+    const r = 50 + Math.sin(Date.now()/250) * 8;
+    ctx.beginPath();
+    ctx.arc(m.palace.x, m.palace.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#D4A040';
+  ctx.fillRect(px, py - 12, 60, 60);
+  // Crenellations
+  ctx.fillStyle = '#B07820';
+  for (let i = 0; i < 4; i++) ctx.fillRect(px + i * 15, py - 22, 11, 12);
+  // Door
+  ctx.fillStyle = palaceUnlocked ? '#5A3A1A' : '#3A2A1A';
+  ctx.beginPath();
+  ctx.moveTo(px + 22, py + 48);
+  ctx.lineTo(px + 22, py + 22);
+  ctx.arc(px + 30, py + 22, 8, Math.PI, 0);
+  ctx.lineTo(px + 38, py + 48);
+  ctx.closePath();
+  ctx.fill();
+  if (palaceUnlocked) {
+    // Bright open archway
+    ctx.fillStyle = '#FFE89A';
+    ctx.beginPath();
+    ctx.moveTo(px + 25, py + 48);
+    ctx.lineTo(px + 25, py + 24);
+    ctx.arc(px + 30, py + 24, 5, Math.PI, 0);
+    ctx.lineTo(px + 35, py + 48);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // Lock icon on door
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(px + 27, py + 28, 6, 7);
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(px + 30, py + 28, 3, Math.PI, 0);
+    ctx.stroke();
+  }
+  // Flag
+  ctx.fillStyle = '#3A2A1A';
+  ctx.fillRect(px + 28, py - 36, 2, 16);
+  ctx.fillStyle = '#FF6BCB';
+  ctx.beginPath();
+  ctx.moveTo(px + 30, py - 36);
+  ctx.lineTo(px + 42, py - 32);
+  ctx.lineTo(px + 30, py - 28);
+  ctx.fill();
+
+  // Coins
+  const t = Date.now() / 250;
+  for (const c of m.coins) {
+    if (c.taken) continue;
+    const bob = Math.sin(t + c.x) * 2;
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath(); ctx.arc(c.x, c.y + bob, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFB000';
+    ctx.beginPath(); ctx.arc(c.x, c.y + bob, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(c.x - 2, c.y - 2 + bob, 1.5, 1.5);
+  }
+
+  // Enemies (shadow blobs)
+  for (const e of m.enemies) {
+    if (!e.alive) continue;
+    const ecx = e.x + e.w/2, ecy = e.y + e.h/2;
+    // Body
+    ctx.fillStyle = '#2A1020';
+    ctx.beginPath();
+    ctx.arc(ecx, ecy, 15, 0, Math.PI * 2);
+    ctx.fill();
+    // Drippy bottom
+    ctx.beginPath();
+    ctx.arc(ecx - 6, ecy + 8, 3.5, 0, Math.PI * 2);
+    ctx.arc(ecx, ecy + 10, 3.5, 0, Math.PI * 2);
+    ctx.arc(ecx + 6, ecy + 8, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Red glowing eyes
+    ctx.fillStyle = '#FF2030';
+    ctx.beginPath();
+    ctx.arc(ecx - 5, ecy - 3, 2.5, 0, Math.PI * 2);
+    ctx.arc(ecx + 5, ecy - 3, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(ecx - 5.5, ecy - 3.5, 1, 1);
+    ctx.fillRect(ecx + 4.5, ecy - 3.5, 1, 1);
+    // Mean fangs
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(ecx - 3, ecy + 3);
+    ctx.lineTo(ecx - 2, ecy + 6);
+    ctx.lineTo(ecx - 1, ecy + 3);
+    ctx.moveTo(ecx + 1, ecy + 3);
+    ctx.lineTo(ecx + 2, ecy + 6);
+    ctx.lineTo(ecx + 3, ecy + 3);
+    ctx.fill();
+  }
+
+  // Swing effect (around Eleanor)
+  if (m.swingTimer > 0) {
+    const k = m.swingTimer / 16;
+    const cx = m.px + m.pw/2, cy = m.py + m.ph/2;
+    ctx.strokeStyle = 'rgba(255,255,200,' + k + ')';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,210,255,' + (k * 0.7) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 38, 0, Math.PI * 2);
+    ctx.stroke();
+    // Sparkles
+    for (let s = 0; s < 8; s++) {
+      const ang = (Date.now() / 100) + s * Math.PI / 4;
+      const sx = cx + Math.cos(ang) * 32;
+      const sy = cy + Math.sin(ang) * 32;
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Eleanor (scaled-up dressup sprite, possibly flickering when invincible)
+  const flicker = m.invincible > 0 && Math.floor(m.invincible/4) % 2 === 0;
+  ctx.save();
+  ctx.globalAlpha = flicker ? 0.5 : 1;
+  ctx.translate(m.px + m.pw/2, m.py + m.ph/2);
+  if (m.facing < 0) ctx.scale(-1.4, 1.4);
+  else ctx.scale(1.4, 1.4);
+  drawDressupEleanor(-16, -24);
+  ctx.restore();
+
+  drawParticles(false);
+
+  // HUD bar
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, 44);
+  // Hearts
+  for (let i = 0; i < 3; i++) drawHeart(10 + i * 26, 14, i < m.hearts);
+  // Coins
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.arc(100, 22, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFB000';
+  ctx.beginPath(); ctx.arc(100, 22, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(m.coinsCollected + ' / ' + m.coinsTotal, 115, 28);
+  // Hint
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'right';
+  if (palaceUnlocked) {
+    ctx.fillText('All gold! Run to the palace!', W - 10, 19);
+  } else {
+    ctx.fillText('Arrows = move · Z/Space = magic wand', W - 10, 19);
+  }
+  ctx.fillText('Bring Eleanor home with all her money', W - 10, 35);
+  ctx.textAlign = 'start';
+
+  if (m.won) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, H/2 - 36, W, 72);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Home Safe!', W/2, H/2 + 4);
+    ctx.textAlign = 'start';
+  }
 }
 
 // =========================================================
