@@ -3157,7 +3157,22 @@ function drawRopeClimb() {
 // DRESS-UP (Level 31) — full salon
 // =========================================================
 
-const HAIR_COLORS = ['#8B7355', '#E5C16A', '#5C3A1A', '#1A1A1A', '#B04030', '#FF80C0', '#9040C0'];
+const HAIR_COLORS = [
+  '#5C3A1A',  // 0 brown
+  '#E5C16A',  // 1 blonde
+  '#8B5A2B',  // 2 light brown
+  '#1A1A1A',  // 3 black
+  '#B04030',  // 4 red
+  '#FF80C0',  // 5 pink
+  '#9040C0',  // 6 purple
+  '#3060D0',  // 7 blue
+  '#30C0A0',  // 8 teal
+  '#40A040',  // 9 green
+  '#E07020',  // 10 orange
+  '#F0D040',  // 11 yellow
+  '#A0A0A0',  // 12 silver
+  'rainbow',  // 13 rainbow
+];
 const DRESS_COLORS = ['#6A5A4A', '#FF69B4', '#FFD700', '#9040C0', '#4080C0', '#40A040', '#FFFFFF'];
 const SHOE_COLORS = ['#FFD700', '#FF80C0', '#C8C8D8', '#C04040', '#1A1A1A', '#FFFFFF'];
 const EYE_COLORS = ['#3A7050', '#4080C0', '#704A2A', '#8B5A1A', '#9040C0', '#FF80C0'];
@@ -3172,8 +3187,10 @@ const BRACELET_COLORS = [null, '#FFD700', '#F0E8D0', '#FF80C0'];
 
 const TABS = ['Hair', 'Crown', 'Dress', 'Shoes', 'Makeup', 'Jewelry'];
 const TAB_OPTIONS = [
-  [{ key: 'hairstyle', label: 'Style', count: 6 },
-   { key: 'hairColor', label: 'Color', count: 7 }],
+  [{ key: 'hairstyle', label: 'Style', count: 7, startIndex: 0 },
+   { key: 'hairstyle', label: '',      count: 6, startIndex: 7 },
+   { key: 'hairColor', label: 'Color', count: 7, startIndex: 0 },
+   { key: 'hairColor', label: '',      count: 7, startIndex: 7 }],
   [{ key: 'crown',      label: 'Crown', count: 5 },
    { key: 'crownJewel', label: 'Jewel', count: 6 }],
   [{ key: 'dressColor',   label: 'Color',   count: 7 },
@@ -3219,7 +3236,31 @@ function saveCurrentEleanorToGallery(name) {
 }
 
 function dressupReady() {
-  return dressup.dressColor > 0 && dressup.hairstyle > 0 && dressup.shoes > 0;
+  return dressup.dressColor > 0 && dressup.shoes > 0;
+}
+
+function makeHairGradient(cx, sy, w, h) {
+  const g = ctx.createLinearGradient(cx - w/2, sy, cx + w/2, sy + h);
+  g.addColorStop(0,    '#FF4040');
+  g.addColorStop(0.18, '#FFA040');
+  g.addColorStop(0.36, '#FFE040');
+  g.addColorStop(0.54, '#40D040');
+  g.addColorStop(0.72, '#4070FF');
+  g.addColorStop(1,    '#A040FF');
+  return g;
+}
+
+function hairFill(idx, cx, sy) {
+  if (idx === 13) return makeHairGradient(cx, sy + 4, 32, 48);
+  return HAIR_COLORS[idx];
+}
+
+function hairShade(idx) {
+  if (idx === 13) return '#5040A0';
+  // Darker version for shading
+  const base = HAIR_COLORS[idx];
+  if (base === '#1A1A1A') return '#333';
+  return base;
 }
 
 function updateDressup() {
@@ -3239,17 +3280,18 @@ function dressupHitTest(cx, cy) {
   }
   // Tab content rows
   const tab = TAB_OPTIONS[dressup.activeTab];
-  const startY = 130;
-  const rowH = tab.length > 4 ? 55 : 65;
+  const startY = 128;
+  const rowH = tab.length >= 4 ? 52 : 65;
   for (let r = 0; r < tab.length; r++) {
     const row = tab[r];
     const rowY = startY + r * rowH;
+    const offset = row.startIndex || 0;
     const startX = 360;
     const spacing = 56;
     for (let i = 0; i < row.count; i++) {
       const ix = startX + i * spacing;
       if (cx >= ix - 22 && cx < ix + 22 && cy >= rowY - 22 && cy < rowY + 24) {
-        return { kind: row.key, index: i };
+        return { kind: row.key, index: offset + i };
       }
     }
   }
@@ -3311,20 +3353,24 @@ function drawDressup() {
 
   // Tab options on the right
   const tab = TAB_OPTIONS[du.activeTab];
-  const startY = 130;
-  const rowH = tab.length > 4 ? 55 : 65;
+  const startY = 128;
+  const rowH = tab.length >= 4 ? 52 : 65;
   for (let r = 0; r < tab.length; r++) {
     const row = tab[r];
     const rowY = startY + r * rowH;
-    ctx.fillStyle = '#5A2A4A';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(row.label, 310, rowY + 4);
+    const offset = row.startIndex || 0;
+    if (row.label) {
+      ctx.fillStyle = '#5A2A4A';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(row.label, 310, rowY + 4);
+    }
     const startX = 360;
     const spacing = 56;
     for (let i = 0; i < row.count; i++) {
       const ix = startX + i * spacing;
-      const selected = du[row.key] === i;
+      const effIdx = offset + i;
+      const selected = du[row.key] === effIdx;
       ctx.fillStyle = selected ? '#FFFFFF' : 'rgba(255,255,255,0.5)';
       ctx.fillRect(ix - 22, rowY - 22, 44, 46);
       if (selected) {
@@ -3332,7 +3378,7 @@ function drawDressup() {
         ctx.lineWidth = 3;
         ctx.strokeRect(ix - 22, rowY - 22, 44, 46);
       }
-      drawOptionIcon(row.key, i, ix, rowY + 2);
+      drawOptionIcon(row.key, effIdx, ix, rowY + 2);
     }
   }
 
@@ -3473,7 +3519,18 @@ function drawNoneChip(x, y) {
 
 function drawColorChip(x, y, color) {
   if (!color) return drawNoneChip(x, y);
-  ctx.fillStyle = color;
+  if (color === 'rainbow') {
+    const g = ctx.createLinearGradient(x - 13, y - 7, x + 13, y + 19);
+    g.addColorStop(0,    '#FF4040');
+    g.addColorStop(0.2,  '#FFA040');
+    g.addColorStop(0.4,  '#FFE040');
+    g.addColorStop(0.6,  '#40D040');
+    g.addColorStop(0.8,  '#4070FF');
+    g.addColorStop(1,    '#A040FF');
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = color;
+  }
   ctx.beginPath(); ctx.arc(x, y + 6, 13, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1; ctx.stroke();
 }
@@ -3509,78 +3566,188 @@ function drawCrownChip(x, y, i) {
 function drawHairstyleIcon(x, y, i) {
   const cx = x, cy = y + 4;
   const hc = '#5C3A1A';
+  const sk = '#FFDBAC';
+  const tie = '#FF80C0';
+  // helper: base head behind
+  function head() {
+    ctx.fillStyle = sk;
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+  }
+  // helper: standard bangs sweep
+  function bangs() {
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 7, cy);
+    ctx.quadraticCurveTo(cx, cy - 6, cx + 7, cy);
+    ctx.quadraticCurveTo(cx, cy + 4, cx - 7, cy);
+    ctx.fill();
+  }
   if (i === 0) {
-    // Messy
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    // Two braids
+    head();
     ctx.fillStyle = hc;
-    ctx.beginPath();
-    ctx.moveTo(cx - 8, cy + 2);
-    ctx.lineTo(cx - 5, cy - 5);
-    ctx.lineTo(cx - 2, cy + 3);
-    ctx.lineTo(cx + 1, cy - 6);
-    ctx.lineTo(cx + 4, cy + 3);
-    ctx.lineTo(cx + 7, cy - 4);
-    ctx.lineTo(cx + 8, cy + 3);
-    ctx.quadraticCurveTo(cx, cy + 6, cx - 8, cy + 2);
-    ctx.fill();
-  } else if (i === 1) {
-    // Down straight
-    ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.ellipse(cx, cy + 6, 10, 13, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = hc;
-    ctx.beginPath();
-    ctx.moveTo(cx - 8, cy);
-    ctx.quadraticCurveTo(cx, cy - 6, cx + 8, cy);
-    ctx.quadraticCurveTo(cx, cy + 5, cx - 8, cy);
-    ctx.fill();
-  } else if (i === 2) {
-    // Ponytail
-    ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.arc(cx, cy, 8, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = hc;
-    ctx.beginPath();
-    ctx.ellipse(cx + 9, cy + 7, 3, 9, 0.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#FF80C0';
-    ctx.beginPath(); ctx.arc(cx + 7, cy + 1, 1.5, 0, Math.PI * 2); ctx.fill();
-  } else if (i === 3) {
-    // Side braid
-    ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.ellipse(cx, cy, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = hc;
-    for (let j = 0; j < 5; j++) {
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    // Two braids
+    for (let j = 0; j < 4; j++) {
       ctx.beginPath();
-      ctx.ellipse(cx + 9, cy + 1 + j * 3, 2.5, 1.8, 0.3 + j * 0.05, 0, Math.PI * 2);
+      ctx.ellipse(cx - 8 + (j%2)*0.6, cy + 2 + j*2.5, 2, 1.6, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + 8 - (j%2)*0.6, cy + 2 + j*2.5, 2, 1.6, 0, 0, Math.PI*2);
       ctx.fill();
     }
-  } else if (i === 4) {
-    // French braid
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx - 8, cy + 12, 1.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 8, cy + 12, 1.2, 0, Math.PI*2); ctx.fill();
+    bangs();
+  } else if (i === 1) {
+    // One braid (side)
+    head();
     ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.ellipse(cx, cy + 4, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    for (let j = 0; j < 5; j++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + 9, cy + 2 + j*2.5, 2.2, 1.7, 0.3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx + 9, cy + 14, 1.2, 0, Math.PI*2); ctx.fill();
+    bangs();
+  } else if (i === 2) {
+    // High ponytail
+    head();
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    // Pony going up + back
+    ctx.beginPath();
+    ctx.ellipse(cx - 1, cy - 8, 3, 5, -0.3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx, cy - 4, 1.4, 0, Math.PI*2); ctx.fill();
+    bangs();
+  } else if (i === 3) {
+    // Two ponytails (pigtails)
+    head();
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx - 10, cy + 4, 3, 6, -0.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + 10, cy + 4, 3, 6, 0.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx - 8, cy + 1, 1.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 8, cy + 1, 1.2, 0, Math.PI*2); ctx.fill();
+    bangs();
+  } else if (i === 4) {
+    // Two high buns
+    head();
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - 5, cy - 7, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 5, cy - 7, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#3A1A0A';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.arc(cx - 5, cy - 7, 2.2, 0, Math.PI*2);
+    ctx.arc(cx + 5, cy - 7, 2.2, 0, Math.PI*2);
+    ctx.stroke();
+    bangs();
+  } else if (i === 5) {
+    // One high bun (top knot)
+    head();
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(cx, cy - 1, 7.5, Math.PI, 0); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy - 8, 4.5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#3A1A0A';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.arc(cx, cy - 8, 3, 0, Math.PI*2); ctx.stroke();
+    bangs();
+  } else if (i === 6) {
+    // One French braid
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 4, 9, 12, 0, 0, Math.PI*2); ctx.fill();
+    head();
     ctx.fillStyle = '#3A1A0A';
     for (let j = 0; j < 6; j++) {
       ctx.beginPath();
-      ctx.ellipse(cx + (j % 2 ? -1.5 : 1.5), cy - 5 + j * 3, 3, 1.8, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + (j%2 ? -1.5 : 1.5), cy - 5 + j*3, 2.8, 1.6, 0, 0, Math.PI*2);
       ctx.fill();
     }
-  } else if (i === 5) {
-    // Buns
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx, cy + 14, 1.2, 0, Math.PI*2); ctx.fill();
+  } else if (i === 7) {
+    // Two French braids
     ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.ellipse(cx, cy + 1, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFDBAC';
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx, cy + 4, 9, 12, 0, 0, Math.PI*2); ctx.fill();
+    head();
+    ctx.fillStyle = '#3A1A0A';
+    for (let j = 0; j < 5; j++) {
+      ctx.beginPath();
+      ctx.ellipse(cx - 3, cy - 4 + j*2.8, 1.8, 1.3, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + 3, cy - 4 + j*2.8, 1.8, 1.3, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.fillStyle = tie;
+    ctx.beginPath(); ctx.arc(cx - 3, cy + 11, 1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 3, cy + 11, 1, 0, Math.PI*2); ctx.fill();
+  } else if (i === 8) {
+    // Hair down
     ctx.fillStyle = hc;
-    ctx.beginPath(); ctx.arc(cx - 5, cy - 7, 3.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + 5, cy - 7, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx, cy + 5, 10, 13, 0, 0, Math.PI*2); ctx.fill();
+    head();
+    bangs();
+  } else if (i === 9) {
+    // Bangs (short bob)
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 2, 9, 9, 0, 0, Math.PI*2); ctx.fill();
+    head();
+    // Full bangs across forehead
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy);
+    ctx.lineTo(cx - 8, cy + 3);
+    ctx.lineTo(cx + 8, cy + 3);
+    ctx.lineTo(cx + 8, cy);
+    ctx.quadraticCurveTo(cx, cy + 6, cx - 8, cy);
+    ctx.fill();
+  } else if (i === 10) {
+    // Wavy
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, cy);
+    ctx.bezierCurveTo(cx - 11, cy + 6, cx - 8, cy + 10, cx - 10, cy + 14);
+    ctx.lineTo(cx + 10, cy + 14);
+    ctx.bezierCurveTo(cx + 8, cy + 10, cx + 11, cy + 6, cx + 9, cy);
+    ctx.fill();
+    head();
+    bangs();
+  } else if (i === 11) {
+    // Straight
+    ctx.fillStyle = hc;
+    ctx.fillRect(cx - 9, cy, 18, 14);
+    head();
+    // Center part bangs
+    ctx.fillStyle = hc;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy);
+    ctx.lineTo(cx - 1, cy + 3);
+    ctx.lineTo(cx + 1, cy + 3);
+    ctx.lineTo(cx + 8, cy);
+    ctx.quadraticCurveTo(cx, cy + 5, cx - 8, cy);
+    ctx.fill();
+  } else if (i === 12) {
+    // Curly
+    ctx.fillStyle = hc;
+    for (let j = 0; j < 5; j++) {
+      ctx.beginPath(); ctx.arc(cx - 8 + j*4, cy + 4, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - 6 + j*4, cy + 10, 3, 0, Math.PI*2); ctx.fill();
+    }
+    head();
+    // Curly bangs
+    ctx.beginPath(); ctx.arc(cx - 4, cy, 2, 0, Math.PI*2);
+    ctx.arc(cx, cy - 1, 2, 0, Math.PI*2);
+    ctx.arc(cx + 4, cy, 2, 0, Math.PI*2);
+    ctx.fillStyle = hc;
+    ctx.fill();
   }
 }
 
@@ -3712,114 +3879,227 @@ function drawBlushChip(x, y, i) {
 function drawDressupEleanor(sx, sy) {
   const du = dressup;
   const cx = sx + 16;
-  const hc = HAIR_COLORS[du.hairColor];
+  const hc = hairFill(du.hairColor, cx, sy);
+  const tieCol = '#FF80C0';
 
-  // BACK HAIR by style
+  // BACK HAIR by style (13 options)
   ctx.fillStyle = hc;
-  if (du.hairstyle === 0) {
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 22, 13, 17, 0, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (du.hairstyle === 1) {
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 28, 16, 24, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx - 13, sy + 28, 4, 11, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + 13, sy + 28, 4, 11, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (du.hairstyle === 2) {
-    // Ponytail
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx - 7, sy + 28, 4, 16, -0.25, 0, Math.PI * 2);
-    ctx.fill();
-    // Tie
-    ctx.fillStyle = '#FF80C0';
-    ctx.beginPath();
-    ctx.ellipse(cx - 4, sy + 15, 2.5, 1.5, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = hc;
-  } else if (du.hairstyle === 3) {
-    // Side braid
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // braid down right side
-    for (let j = 0; j < 8; j++) {
-      const t = j;
-      ctx.beginPath();
-      ctx.ellipse(cx + 12 - t * 0.3, sy + 18 + t * 4, 3.5, 2.5, 0.2 + t * 0.04, 0, Math.PI * 2);
-      ctx.fill();
+  switch (du.hairstyle) {
+    case 0: {
+      // Two braids (pigtails)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      for (let j = 0; j < 8; j++) {
+        ctx.fillStyle = hairFill(du.hairColor, cx, sy);
+        ctx.beginPath(); ctx.ellipse(cx - 10 + (j % 2 ? 0.7 : -0.7), sy + 18 + j * 3, 2.6, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx + 10 + (j % 2 ? -0.7 : 0.7), sy + 18 + j * 3, 2.6, 2, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.ellipse(cx - 10, sy + 44, 2.6, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 10, sy + 44, 2.6, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+      break;
     }
-    ctx.fillStyle = '#FF80C0';
-    ctx.beginPath();
-    ctx.ellipse(cx + 9, sy + 51, 2.5, 1.5, 0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = hc;
-  } else if (du.hairstyle === 4) {
-    // French braid
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = (du.hairColor === 3 ? '#333' : '#3A1A0A');
-    for (let j = 0; j < 11; j++) {
-      ctx.beginPath();
-      ctx.ellipse(cx + (j % 2 ? -2 : 2), sy + 4 + j * 3.5, 3.5, 2.2, 0, 0, Math.PI * 2);
-      ctx.fill();
+    case 1: {
+      // One side braid
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      for (let j = 0; j < 10; j++) {
+        ctx.beginPath();
+        ctx.ellipse(cx + 12 - j * 0.3, sy + 18 + j * 3, 3.2, 2.3, 0.2 + j * 0.03, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.ellipse(cx + 9, sy + 48, 2.8, 1.6, 0.4, 0, Math.PI * 2); ctx.fill();
+      break;
     }
-    ctx.fillStyle = '#FF80C0';
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 43, 3, 1.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = hc;
-  } else if (du.hairstyle === 5) {
-    // Two buns
-    ctx.beginPath();
-    ctx.ellipse(cx, sy + 16, 12, 11, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath(); ctx.arc(cx - 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = du.hairColor === 3 ? '#555' : '#3A1A0A';
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(cx - 7, sy - 1, 3.5, 0, Math.PI * 2);
-    ctx.arc(cx + 7, sy - 1, 3.5, 0, Math.PI * 2);
-    ctx.stroke();
+    case 2: {
+      // High ponytail (up and back)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      // Pony rising up + falling back
+      ctx.beginPath();
+      ctx.moveTo(cx - 1, sy + 4);
+      ctx.bezierCurveTo(cx - 8, sy - 4, cx - 12, sy + 4, cx - 9, sy + 18);
+      ctx.bezierCurveTo(cx - 5, sy + 14, cx, sy + 8, cx + 2, sy + 4);
+      ctx.fill();
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.arc(cx - 1, sy + 4, 2, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 3: {
+      // Two ponytails (pigtails)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx - 14, sy + 24, 4.5, 12, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 14, sy + 24, 4.5, 12, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.arc(cx - 10, sy + 15, 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 10, sy + 15, 1.8, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 4: {
+      // Two high buns (space buns)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 7, sy - 1, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hairShade(du.hairColor);
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(cx - 7, sy - 1, 3.5, 0, Math.PI * 2);
+      ctx.arc(cx + 7, sy - 1, 3.5, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 5: {
+      // One high bun (top knot)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 12, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, sy - 3, 6.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hairShade(du.hairColor);
+      ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.arc(cx, sy - 3, 4.2, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case 6: {
+      // One French braid down the middle, with tail
+      ctx.beginPath(); ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = hairShade(du.hairColor);
+      for (let j = 0; j < 13; j++) {
+        ctx.beginPath();
+        ctx.ellipse(cx + (j % 2 ? -2.2 : 2.2), sy + 4 + j * 3.2, 3.6, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.ellipse(cx, sy + 46, 3, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 7: {
+      // Two French braids
+      ctx.beginPath(); ctx.ellipse(cx, sy + 24, 14, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = hairShade(du.hairColor);
+      for (let j = 0; j < 10; j++) {
+        ctx.beginPath(); ctx.ellipse(cx - 4, sy + 4 + j * 3.3, 2.6, 1.7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx + 4, sy + 4 + j * 3.3, 2.6, 1.7, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = tieCol;
+      ctx.beginPath(); ctx.arc(cx - 4, sy + 38, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 4, sy + 38, 1.6, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 8: {
+      // Hair down (long flowing)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 28, 16, 24, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = hairFill(du.hairColor, cx, sy);
+      ctx.beginPath(); ctx.ellipse(cx - 13, sy + 28, 4, 11, -0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 13, sy + 28, 4, 11, 0.2, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 9: {
+      // Bangs (short bob)
+      ctx.beginPath(); ctx.ellipse(cx, sy + 14, 13, 11, 0, 0, Math.PI * 2); ctx.fill();
+      // Chin-length sides
+      ctx.beginPath();
+      ctx.moveTo(cx - 11, sy + 14);
+      ctx.lineTo(cx - 11, sy + 22);
+      ctx.lineTo(cx - 7, sy + 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + 11, sy + 14);
+      ctx.lineTo(cx + 11, sy + 22);
+      ctx.lineTo(cx + 7, sy + 20);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 10: {
+      // Wavy long
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, sy + 10);
+      ctx.bezierCurveTo(cx - 16, sy + 18, cx - 12, sy + 26, cx - 15, sy + 34);
+      ctx.bezierCurveTo(cx - 13, sy + 42, cx - 8, sy + 46, cx, sy + 46);
+      ctx.bezierCurveTo(cx + 8, sy + 46, cx + 13, sy + 42, cx + 15, sy + 34);
+      ctx.bezierCurveTo(cx + 12, sy + 26, cx + 16, sy + 18, cx + 12, sy + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = hairShade(du.hairColor);
+      // Wave highlights
+      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = hairShade(du.hairColor);
+      ctx.beginPath();
+      for (let j = 0; j < 3; j++) {
+        const yy = sy + 22 + j * 7;
+        ctx.moveTo(cx - 12, yy);
+        ctx.quadraticCurveTo(cx - 6, yy + 3, cx, yy);
+        ctx.quadraticCurveTo(cx + 6, yy - 3, cx + 12, yy);
+      }
+      ctx.stroke();
+      break;
+    }
+    case 11: {
+      // Straight long
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, sy + 10);
+      ctx.lineTo(cx - 13, sy + 46);
+      ctx.lineTo(cx + 13, sy + 46);
+      ctx.lineTo(cx + 12, sy + 10);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 12: {
+      // Curly
+      ctx.beginPath(); ctx.ellipse(cx, sy + 26, 16, 22, 0, 0, Math.PI * 2); ctx.fill();
+      // Curl loops around the edges
+      for (let j = 0; j < 7; j++) {
+        const ang = Math.PI + (j / 6) * Math.PI;
+        const rx = cx + Math.cos(ang) * 15;
+        const ry = sy + 28 + Math.sin(ang) * 17;
+        ctx.fillStyle = hairFill(du.hairColor, cx, sy);
+        ctx.beginPath(); ctx.arc(rx, ry, 3.2, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
   }
 
   // HEAD
   ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
   ctx.beginPath(); ctx.arc(cx, sy + 14, 9, 0, Math.PI * 2); ctx.fill();
 
-  // BANGS — depends on style
-  ctx.fillStyle = hc;
-  if (du.hairstyle === 0) {
+  // BANGS by style
+  ctx.fillStyle = hairFill(du.hairColor, cx, sy);
+  const st = du.hairstyle;
+  if (st === 6 || st === 7) {
+    // French braids cover the top — no separate bangs
+  } else if (st === 9) {
+    // Full bangs across the forehead (short bob)
     ctx.beginPath();
-    ctx.moveTo(cx - 9, sy + 10);
-    ctx.lineTo(cx - 5, sy + 5);
-    ctx.lineTo(cx - 2, sy + 12);
-    ctx.lineTo(cx + 1, sy + 4);
-    ctx.lineTo(cx + 4, sy + 11);
-    ctx.lineTo(cx + 8, sy + 6);
-    ctx.lineTo(cx + 9, sy + 13);
-    ctx.quadraticCurveTo(cx, sy + 16, cx - 9, sy + 10);
+    ctx.moveTo(cx - 10, sy + 8);
+    ctx.lineTo(cx - 10, sy + 13);
+    ctx.lineTo(cx + 10, sy + 13);
+    ctx.lineTo(cx + 10, sy + 8);
+    ctx.quadraticCurveTo(cx, sy + 5, cx - 10, sy + 8);
     ctx.fill();
-  } else if (du.hairstyle === 4) {
-    // skip (french braid covers top)
-  } else if (du.hairstyle === 5) {
+  } else if (st === 11) {
     // Center part
     ctx.beginPath();
-    ctx.moveTo(cx - 8, sy + 9);
-    ctx.quadraticCurveTo(cx - 3, sy + 5, cx, sy + 11);
-    ctx.quadraticCurveTo(cx + 3, sy + 5, cx + 8, sy + 9);
-    ctx.quadraticCurveTo(cx, sy + 14, cx - 8, sy + 9);
+    ctx.moveTo(cx - 9, sy + 9);
+    ctx.lineTo(cx - 1, sy + 13);
+    ctx.lineTo(cx + 1, sy + 13);
+    ctx.lineTo(cx + 9, sy + 9);
+    ctx.quadraticCurveTo(cx, sy + 14, cx - 9, sy + 9);
+    ctx.fill();
+  } else if (st === 12) {
+    // Curly bangs
+    ctx.beginPath();
+    ctx.arc(cx - 5, sy + 10, 2.5, 0, Math.PI * 2);
+    ctx.arc(cx, sy + 8, 2.5, 0, Math.PI * 2);
+    ctx.arc(cx + 5, sy + 10, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (st === 10) {
+    // Wavy side-swept
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, sy + 9);
+    ctx.quadraticCurveTo(cx - 2, sy + 4, cx + 9, sy + 8);
+    ctx.quadraticCurveTo(cx + 4, sy + 12, cx - 9, sy + 9);
     ctx.fill();
   } else {
+    // Standard sweep
     ctx.beginPath();
     ctx.moveTo(cx - 9, sy + 9);
     ctx.quadraticCurveTo(cx, sy + 3, cx + 9, sy + 7);
