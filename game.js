@@ -3179,6 +3179,7 @@ const HAIR_COLORS = [
 const DRESS_COLORS = ['#6A5A4A', '#FF69B4', '#FFD700', '#9040C0', '#4080C0', '#40A040', '#FFFFFF'];
 const SHOE_COLORS = ['#FFD700', '#FF80C0', '#C8C8D8', '#C04040', '#1A1A1A', '#FFFFFF'];
 const EYE_COLORS = ['#3A7050', '#4080C0', '#704A2A', '#8B5A1A', '#9040C0', '#FF80C0'];
+const SKIN_COLORS = ['#FFE0CC', '#FFDBAC', '#E8C5A0', '#D49E7A', '#A87455', '#7A4828', '#4A2A18'];
 const EYESHADOW_COLORS = [null, '#FF80C0', '#4080C0', '#9040C0', '#40A040', '#FFD700'];
 const LIPSTICK_COLORS = [null, '#FF80C0', '#C04040', '#FF8060', '#9040C0'];
 const NAIL_COLORS = [null, '#FF80C0', '#C04040', '#9040C0', '#4080C0', '#FFD700'];
@@ -3200,7 +3201,8 @@ const TAB_OPTIONS = [
    { key: 'dressPattern', label: 'Pattern', count: 6 }],
   [{ key: 'shoes',      label: 'Style', count: 5 },
    { key: 'shoesColor', label: 'Color', count: 6 }],
-  [{ key: 'eyeColor',  label: 'Eyes',      count: 6 },
+  [{ key: 'skin',      label: 'Skin',      count: 7 },
+   { key: 'eyeColor',  label: 'Eyes',      count: 6 },
    { key: 'eyeshadow', label: 'Eyeshadow', count: 6 },
    { key: 'blush',     label: 'Blush',     count: 3 },
    { key: 'lipstick',  label: 'Lipstick',  count: 5 },
@@ -3217,6 +3219,7 @@ function startDressup() {
     crown: 0, crownJewel: 0,
     dressColor: 0, dressPattern: 0,
     shoes: 0, shoesColor: 0,
+    skin: 1,
     eyeColor: 0,
     eyeshadow: 0, blush: 0, lipstick: 0, nails: 0,
     necklace: 0, earrings: 0, bracelet: 0,
@@ -3230,7 +3233,7 @@ function saveCurrentEleanorToGallery(name) {
   if (!save.savedEleanors) save.savedEleanors = [];
   const snap = { name: (name || 'Eleanor').slice(0, 24) };
   for (const k of ['hairstyle','hairColor','crown','crownJewel','dressColor',
-    'dressPattern','shoes','shoesColor','eyeColor','eyeshadow','blush',
+    'dressPattern','shoes','shoesColor','skin','eyeColor','eyeshadow','blush',
     'lipstick','nails','necklace','earrings','bracelet']) {
     snap[k] = dressup[k];
   }
@@ -3405,6 +3408,7 @@ function drawOptionIcon(key, i, x, y) {
   else if (key === 'dressPattern') drawPatternChip(x, y, i);
   else if (key === 'shoes')        drawShoeChip(x, y, i);
   else if (key === 'shoesColor')   drawColorChip(x, y, SHOE_COLORS[i]);
+  else if (key === 'skin')         drawColorChip(x, y, SKIN_COLORS[i]);
   else if (key === 'eyeColor')     drawColorChip(x, y, EYE_COLORS[i]);
   else if (key === 'eyeshadow')    drawColorChip(x, y, EYESHADOW_COLORS[i]);
   else if (key === 'blush')        drawBlushChip(x, y, i);
@@ -4061,7 +4065,7 @@ function drawDressupEleanor(sx, sy) {
   }
 
   // HEAD
-  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
+  ctx.fillStyle = SKIN_COLORS[du.skin == null ? 1 : du.skin];
   ctx.beginPath(); ctx.arc(cx, sy + 14, 9, 0, Math.PI * 2); ctx.fill();
 
   // BANGS by style
@@ -4234,7 +4238,7 @@ function drawDressupEleanor(sx, sy) {
     drawDressPattern(cx, sy, du.dressPattern, dressCol);
   }
   // V-neck
-  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
+  ctx.fillStyle = SKIN_COLORS[du.skin == null ? 1 : du.skin];
   ctx.beginPath();
   ctx.moveTo(cx - 3, sy + 24);
   ctx.lineTo(cx, sy + 27);
@@ -4323,7 +4327,7 @@ function drawDressupEleanor(sx, sy) {
   }
 
   // ARMS
-  ctx.fillStyle = du.hairColor === 0 ? '#E8C5A0' : '#FFDBAC';
+  ctx.fillStyle = SKIN_COLORS[du.skin == null ? 1 : du.skin];
   ctx.beginPath(); ctx.ellipse(cx - 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(cx + 11, sy + 28, 2.2, 5.5, 0, 0, Math.PI * 2); ctx.fill();
 
@@ -4573,6 +4577,7 @@ function drawSavedEleanorAt(centerX, centerY, config) {
   dressup = Object.assign({
     hairstyle: 0, hairColor: 0, crown: 0, crownJewel: 0,
     dressColor: 0, dressPattern: 0, shoes: 0, shoesColor: 0,
+    skin: 1,
     eyeColor: 0, eyeshadow: 0, blush: 0, lipstick: 0, nails: 0,
     necklace: 0, earrings: 0, bracelet: 0,
     activeTab: 0, sparkleT: 0,
@@ -4623,6 +4628,7 @@ function defaultEleanorOutfit() {
   return {
     hairstyle: 8, hairColor: 1, crown: 1, crownJewel: 4,
     dressColor: 1, dressPattern: 0, shoes: 2, shoesColor: 1,
+    skin: 1,
     eyeColor: 1, eyeshadow: 1, blush: 1, lipstick: 1, nails: 1,
     necklace: 3, earrings: 1, bracelet: 1,
   };
@@ -4636,6 +4642,7 @@ function startMaze() {
   dressup = Object.assign({
     hairstyle: 0, hairColor: 0, crown: 0, crownJewel: 0,
     dressColor: 0, dressPattern: 0, shoes: 0, shoesColor: 0,
+    skin: 1,
     eyeColor: 0, eyeshadow: 0, blush: 0, lipstick: 0, nails: 0,
     necklace: 0, earrings: 0, bracelet: 0,
     activeTab: 0, sparkleT: 0,
